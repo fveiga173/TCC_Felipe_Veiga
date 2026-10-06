@@ -1,127 +1,177 @@
-import io
+"""Analisador de vibração para TCC — PSD, FFT e Grms.
+
+Os breakpoints normativos são perfis de referência transcritos das fontes indicadas.
+A interpolação log-log abaixo é representação computacional entre breakpoints;
+não afirma que as normas aplicaram suavização aos dados para obter os perfis.
+"""
+from io import BytesIO
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 from scipy.signal import welch
 
-# Curvas de referência documentadas no projeto
-ASTM_D4728_TRUCK = np.array([[1,.00005],[4,.01],[16,.01],[40,.001],[80,.001],[200,.00001]], float)
-ISO_13355 = np.array([[3,.0005],[6,.012],[18,.012],[40,.001],[200,.0005]], float)
-ISTA_3E = np.array([[1,.00005],[4,.01],[16,.01],[40,.001],[80,.001],[200,.00001]], float)
-NORMS = {
-    'ASTM D4728 — Truck (Appendix X1)': ASTM_D4728_TRUCK,
-    'ISO 13355 — perfil indicativo': ISO_13355,
-    'ISTA 3E (2005)': ISTA_3E,
+st.set_page_config(page_title="Análise de vibração", layout="wide")
+st.title("Análise de vibração — FFT, PSD e Grms")
+st.caption("Ferramenta de apoio ao protocolo experimental do TCC")
+
+# PSD em g²/Hz. ASTM Truck e ISTA 3E são apresentados como breakpoints
+# equivalentes conforme a transcrição de referência disponível no projeto/conversa.
+PROFILES = {
+    "ASTM D4728 — Truck (Appendix X1, Table X1.1)": {
+        "f": np.array([1, 4, 16, 40, 80, 200.]),
+        "p": np.array([5e-5, 1e-2, 1e-2, 1e-3, 1e-3, 1e-5]), "overall": .52},
+    "ISO 13355 — perfil indicativo (Table X1.3 da cópia citada)": {
+        "f": np.array([3, 6, 18, 40, 200.]),
+        "p": np.array([5e-4, 1.2e-2, 1.2e-2, 1e-3, 5e-4]), "overall": .59},
+    "ISTA 3E — Random Vibration Spectrum (2005)": {
+        "f": np.array([1, 4, 16, 40, 80, 200.]),
+        "p": np.array([5e-5, 1e-2, 1e-2, 1e-3, 1e-3, 1e-5]), "overall": .52},
 }
 
-def read_csv(file):
-    raw=file.getvalue()
-    for sep in [',',';','\t']:
-        try:
-            df=pd.read_csv(io.BytesIO(raw), sep=sep)
-            if df.shape[1]>=2: return df
-        except Exception: pass
-    raise ValueError('Não foi possível identificar o separador do CSV.')
+with st.sidebar:
+    st.header("Dados e processamento")
+    uploaded = st.file_uploader("CSV do registrador Arduino", type=["csv", "txt"])
+    st.caption("O arquivo MPU6050_SD_logger.ino do projeto grava tempo e aceleração nos eixos.")
 
-def fs_from_time(df, col):
-    t=pd.to_numeric(df[col], errors='coerce').dropna().to_numpy()
-    dt=np.diff(t); dt=dt[(dt>0)&np.isfinite(dt)]
-    if len(dt)==0: raise ValueError('Não foi possível estimar Fs.')
-    return 1/np.median(dt)
+if not uploaded:
+    st.info("Envie um CSV para iniciar. Espera-se uma coluna de tempo e ao menos um eixo de aceleração.")
+    with st.expander("Fontes e notas metodológicas", expanded=True):
+        st.markdown("""
+**Perfis embutidos:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck); perfil atribuído à ISO 13355 na Table X1.3 do Appendix X1 da ASTM; ISTA 3E (2005), Random Vibration Spectrum. Breakpoints transcritos a partir das referências associadas ao projeto e da conversa citada. A ISO e a ISTA não foram fornecidas como arquivos independentes neste projeto; confirme valores e edição na cópia licenciada/adotada antes de citar no TCC.
 
-def psd_welch(x, fs, nperseg):
-    x=x-np.mean(x)
-    nperseg=min(nperseg,len(x))
-    return welch(x,fs=fs,window='hann',nperseg=nperseg,noverlap=nperseg//2,detrend='constant',scaling='density')
+**Método:** a PSD bruta é calculada pelo periodograma de Welch sobre todo o registro. A PSD experimental representativa é a média aritmética das PSDs de segmentos completos, sem sobreposição; ela reduz variabilidade entre estimativas e não é chamada de suavização nem altera o sinal medido. Os gráficos mantêm a PSD bruta visível.
 
-def grms(f,p,fmin,fmax):
-    m=(f>=fmin)&(f<=fmax)
-    return np.sqrt(np.trapezoid(p[m],f[m])) if m.sum()>1 else np.nan
+As curvas normativas são especificadas por breakpoints. Entre eles, o app usa interpolação log-log (lei de potência) como representação computacional do perfil, não como alegação de suavização empregada pela norma. O perfil ISTA 3E e ASTM Truck acima têm os mesmos breakpoints conforme a transcrição usada; a comparação resultará igual.
 
-def interp_ref(freq, curve):
-    m=(freq>=curve[:,0].min())&(freq<=curve[:,0].max())
-    if m.sum()<5: return m,np.array([])
-    p=10**np.interp(np.log10(freq[m]),np.log10(curve[:,0]),np.log10(curve[:,1]))
-    return m,p
+Similaridade espectral não demonstra conformidade. Conformidade depende do método de ensaio, tolerâncias, montagem, duração, faixa, equipamento e demais requisitos da edição aplicável.
+""")
+    st.stop()
 
-def similarity(f,p,curve):
-    m,pr=interp_ref(f,curve)
-    if m.sum()<5: return None
-    pm=np.maximum(p[m],1e-16); pr=np.maximum(pr,1e-16)
-    lm=np.log10(pm); lr=np.log10(pr)
-    abs_rmse=np.sqrt(np.mean((lm-lr)**2))
-    sm=lm-lm.mean(); sr=lr-lr.mean()
-    shape_rmse=np.sqrt(np.mean((sm-sr)**2))
-    return {'fmin':f[m].min(),'fmax':f[m].max(),'abs_rmse':abs_rmse,'shape_rmse':shape_rmse,'abs_score':100*np.exp(-abs_rmse),'shape_score':100*np.exp(-shape_rmse)}
+try:
+    df = pd.read_csv(uploaded, sep=None, engine="python", comment="#")
+except Exception as exc:
+    st.error(f"Não foi possível ler o CSV: {exc}"); st.stop()
+if df.empty:
+    st.error("O CSV não contém dados."); st.stop()
 
-st.set_page_config(page_title='Veiga Vibration Analyzer',layout='wide')
-st.title('Veiga Vibration Analyzer')
-st.caption('FFT • PSD • GRMS • comparação com referências de transporte rodoviário')
+st.subheader("Mapeamento das colunas")
+columns = list(df.columns)
+def guess_time(cols):
+    for c in cols:
+        if any(k in str(c).lower() for k in ["time", "tempo", "millis", "timestamp", "seg"]): return c
+    return cols[0]
+time_col = st.selectbox("Coluna de tempo", columns, index=columns.index(guess_time(columns)))
+numeric = [c for c in columns if c != time_col and pd.to_numeric(df[c], errors="coerce").notna().sum()]
+if not numeric: st.error("Não encontrei coluna numérica de aceleração."); st.stop()
+axis_col = st.selectbox("Eixo de aceleração", numeric)
+unit = st.selectbox("Unidade dos valores", ["g", "m/s²"], help="Convertemos m/s² para g antes do cálculo.")
+time_unit = st.selectbox("Unidade da coluna de tempo", ["Auto", "s", "ms", "µs"])
+segment_s = st.number_input("Duração do segmento para PSD representativa (s)", min_value=0.1, value=4.0, step=0.5)
 
-up=st.file_uploader('Selecione o CSV do Arduino',type=['csv','CSV'])
-if up is None:
-    st.info('Carregue um CSV para iniciar.'); st.stop()
+def time_seconds(series, mode):
+    s = series.astype(str).str.strip()
+    if mode == "Auto":
+        vals = pd.to_numeric(s.str.replace(",", ".", regex=False), errors="coerce")
+        if vals.notna().mean() > .9:
+            med = float(vals.diff().dropna().median())
+            # Inferência para contadores inteiros comuns do firmware; permite ajuste manual.
+            scale = 1e-3 if med >= 1 else 1.
+            return vals.to_numpy(float) * scale
+        parsed = pd.to_datetime(series, errors="coerce")
+        return (parsed - parsed.iloc[0]).dt.total_seconds().to_numpy()
+    vals = pd.to_numeric(s.str.replace(",", ".", regex=False), errors="coerce").to_numpy(float)
+    return vals * {"s": 1, "ms": 1e-3, "µs": 1e-6}[mode]
 
-df=read_csv(up)
-num=[c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-time_candidates=[c for c in df.columns if str(c).lower() in {'time_s','time','tempo','tempo_s','timestamp','timestamp_s'}]
-time_col=st.sidebar.selectbox('Coluna de tempo',df.columns.tolist(),index=df.columns.tolist().index(time_candidates[0]) if time_candidates else 0)
-try: fs_auto=fs_from_time(df,time_col)
-except Exception: fs_auto=100.0
-fs=st.sidebar.number_input('Fs usada [Hz]',min_value=.1,value=float(fs_auto),format='%.4f')
-signals=[c for c in num if c!=time_col]
-axis=st.sidebar.selectbox('Eixo / sinal',signals)
-nperseg=st.sidebar.selectbox('Nperseg — Welch',[x for x in [512,1024,2048,4096,8192] if x<=len(df)] or [min(256,len(df))])
-nyq=fs/2
-fmin=st.sidebar.number_input('Frequência mínima [Hz]',min_value=0.,value=1.)
-fmax=st.sidebar.number_input('Frequência máxima [Hz]',min_value=fmin+.01,max_value=float(nyq),value=float(max(fmin+.01,min(nyq,200.))))
+t = time_seconds(df[time_col], time_unit)
+x = pd.to_numeric(df[axis_col], errors="coerce").to_numpy(float)
+valid = np.isfinite(t) & np.isfinite(x)
+t, x = t[valid], x[valid]
+order = np.argsort(t); t, x = t[order], x[order]
+unique = np.r_[True, np.diff(t) > 0]; t, x = t[unique], x[unique]
+if len(t) < 16: st.error("São necessários ao menos 16 pontos válidos."); st.stop()
+dt = np.diff(t)
+dt = dt[np.isfinite(dt) & (dt > 0)]
+if len(dt) < 2: st.error("A coluna de tempo não permite estimar Fs."); st.stop()
+fs = 1 / np.median(dt)
+jitter = np.std(dt) / np.mean(dt) * 100
+if unit == "m/s²": x = x / 9.80665
+x = x - np.mean(x)
+st.caption(f"Fs estimada: **{fs:.4g} Hz** (mediana dos intervalos de tempo) · {len(x):,} amostras · duração {t[-1]-t[0]:.2f} s · variação relativa do intervalo {jitter:.2f}%")
+if jitter > 5: st.warning("Intervalo de amostragem variável (>5%). Welch pressupõe amostragem uniforme; interprete os resultados com cautela.")
 
-x=pd.to_numeric(df[axis],errors='coerce').dropna().to_numpy(); xac=x-x.mean()
-t=np.arange(len(x))/fs
-f_fft=np.fft.rfftfreq(len(x),1/fs); X=np.fft.rfft(xac); amp=np.abs(X)/len(x); amp[1:-1]*=2
-f_psd,p=psd_welch(x,fs,nperseg); G=grms(f_psd,p,fmin,fmax)
+nperseg = min(len(x), max(16, int(round(segment_s * fs))))
+if nperseg < 16: st.error("Segmento menor que 16 amostras."); st.stop()
+freq, psd_raw = welch(x, fs=fs, window="hann", nperseg=len(x), noverlap=0, detrend="constant", scaling="density")
+_, psd_full = welch(x, fs=fs, window="hann", nperseg=nperseg, noverlap=0, detrend="constant", scaling="density")
+segments = [x[i:i+nperseg] for i in range(0, len(x)-nperseg+1, nperseg)]
+segment_psds = [welch(s, fs=fs, window="hann", nperseg=nperseg, noverlap=0, detrend="constant", scaling="density")[1] for s in segments]
+psd_rep = np.mean(segment_psds, axis=0) if segment_psds else psd_full
+f_rep = welch(x[:nperseg], fs=fs, window="hann", nperseg=nperseg, noverlap=0, detrend="constant", scaling="density")[0]
+grms_time = float(np.sqrt(np.mean(x*x)))
+grms_psd = float(np.sqrt(np.trapezoid(psd_raw, freq)))
 
-cols=st.columns(5)
-for c,label,val in zip(cols,['Amostras','Duração','Fs','Nyquist','GRMS'],[f'{len(x):,}',f'{len(x)/fs/60:.2f} min',f'{fs:.3f} Hz',f'{nyq:.3f} Hz',f'{G:.5f} g']): c.metric(label,val)
+tabs = st.tabs(["Sinal e FFT", "PSD e comparação", "Método e fontes"])
+with tabs[0]:
+    sig = go.Figure(); sig.add_trace(go.Scatter(x=t-t[0], y=x, name="Aceleração", mode="lines"))
+    sig.update_layout(title="Aceleração (componente média removida)", xaxis_title="Tempo (s)", yaxis_title="Aceleração (g)", height=350); st.plotly_chart(sig, use_container_width=True)
+    nfft = len(x); yf = np.abs(np.fft.rfft(x * np.hanning(nfft))) * 2 / np.sum(np.hanning(nfft)); xf = np.fft.rfftfreq(nfft, 1/fs)
+    fftfig = go.Figure(go.Scatter(x=xf[1:], y=yf[1:], mode="lines", name="FFT")); fftfig.update_layout(title="Amplitude espectral (janela Hann)", xaxis_title="Frequência (Hz)", yaxis_title="Amplitude (g, aprox.)", xaxis_type="log", yaxis_type="log", height=350); st.plotly_chart(fftfig, use_container_width=True)
+    a,b,c = st.columns(3); a.metric("Grms no tempo", f"{grms_time:.4g} g"); b.metric("Grms integrado da PSD bruta", f"{grms_psd:.4g} g"); c.metric("Segmentos completos", str(len(segments)))
+    st.caption("FFT de amplitude para inspeção. Welch fornece a PSD e o Grms espectral; pequenas diferenças em relação ao Grms temporal decorrem de janelamento/estimativa.")
 
-st.subheader('1. Sinal no domínio do tempo')
-fig=go.Figure(go.Scatter(x=t,y=xac,mode='lines',name=axis)); fig.update_layout(xaxis_title='Tempo [s]',yaxis_title='Aceleração AC [g]',height=400); st.plotly_chart(fig,use_container_width=True)
+with tabs[1]:
+    fmin = max(float(f_rep[1]), 0.01); fmax = min(fs/2, 200.)
+    if fmax <= fmin: st.warning("Faixa amostral insuficiente para comparar os perfis (limite superior <= inferior).")
+    else:
+        low = st.number_input("Frequência mínima de comparação (Hz)", min_value=fmin, max_value=fmax, value=max(fmin, 1.0), key="low")
+        high = st.number_input("Frequência máxima de comparação (Hz)", min_value=low, max_value=fmax, value=fmax, key="high")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=freq[1:], y=psd_raw[1:], name="PSD experimental bruta (Welch — registro completo)", mode="lines", line={"width":1, "color":"#9aa0a6"}))
+        fig.add_trace(go.Scatter(x=f_rep[1:], y=psd_rep[1:], name="PSD experimental representativa (média de segmentos)", mode="lines", line={"width":2, "color":"#1769aa"}))
+        fgrid = np.geomspace(low, high, 500)
+        def interp_loglog(fp, pp, fq):
+            return 10 ** np.interp(np.log10(fq), np.log10(fp), np.log10(pp))
+        results=[]
+        obs = np.interp(np.log10(fgrid), np.log10(f_rep[1:]), np.log10(np.maximum(psd_rep[1:], 1e-30)))
+        for name, prof in PROFILES.items():
+            mask = (fgrid >= prof["f"][0]) & (fgrid <= prof["f"][-1])
+            if mask.sum() < 2: continue
+            ref = interp_loglog(prof["f"], prof["p"], fgrid[mask])
+            fig.add_trace(go.Scatter(x=fgrid[mask], y=ref, name=name, mode="lines", line={"dash":"dash"}))
+            valid_obs = (f_rep >= fgrid[mask][0]) & (f_rep <= fgrid[mask][-1]) & (psd_rep > 0)
+            ff = f_rep[valid_obs]
+            if len(ff) < 2: continue
+            ref_obs = interp_loglog(prof["f"], prof["p"], ff)
+            log_meas = np.log10(psd_rep[valid_obs]); log_ref = np.log10(ref_obs)
+            rmse = float(np.sqrt(np.mean((log_meas-log_ref)**2)))
+            shape_rmse = float(np.sqrt(np.mean(((log_meas-log_meas.mean())-(log_ref-log_ref.mean()))**2)))
+            exp_grms = float(np.sqrt(np.trapezoid(psd_rep[valid_obs], ff)))
+            ref_grms = float(np.sqrt(np.trapezoid(ref_obs, ff)))
+            results.append({"Perfil":name,"RMSE log₁₀ PSD (décadas)":rmse,"RMSE de forma (décadas)":shape_rmse,"Grms exp. na faixa":exp_grms,"Grms perfil na faixa":ref_grms,"Razão Grms exp./perfil":exp_grms/ref_grms if ref_grms else np.nan,"Grms publicado (referência)":prof["overall"]})
+        fig.update_layout(title="PSD experimental e perfis de referência", xaxis_title="Frequência (Hz)", yaxis_title="PSD (g²/Hz)", xaxis_type="log", yaxis_type="log", height=540, legend={"orientation":"h"}); st.plotly_chart(fig, use_container_width=True)
+        if results:
+            out=pd.DataFrame(results).sort_values("RMSE log₁₀ PSD (décadas)")
+            st.dataframe(out, use_container_width=True, hide_index=True)
+            st.info("RMSE menor indica maior proximidade numérica da PSD na faixa escolhida; RMSE de forma remove o nível médio em log-PSD. Razão Grms compara energia integrada na faixa observada. Nenhuma dessas métricas estabelece conformidade normativa.")
+            st.download_button("Baixar comparação CSV", out.to_csv(index=False).encode("utf-8-sig"), "comparacao_psd.csv", "text/csv")
+        else: st.warning("A faixa escolhida não sobrepõe os breakpoints normativos com pontos experimentais suficientes.")
+        expdf=pd.DataFrame({"frequency_Hz":f_rep,"psd_raw_full_record_g2_per_Hz":np.interp(f_rep, freq, psd_raw),"psd_representative_segment_mean_g2_per_Hz":psd_rep})
+        st.download_button("Baixar PSD experimental CSV", expdf.to_csv(index=False).encode("utf-8-sig"), "psd_experimental.csv", "text/csv")
 
-st.subheader('2. FFT')
-m=(f_fft>=max(fmin,.01))&(f_fft<=fmax)
-fig=go.Figure(go.Scatter(x=f_fft[m],y=amp[m],mode='lines',name='FFT')); fig.update_layout(xaxis_type='log',yaxis_type='log',xaxis_title='Frequência [Hz]',yaxis_title='Amplitude [g]',height=450); st.plotly_chart(fig,use_container_width=True)
+with tabs[2]:
+    st.markdown("""
+### Processamento
+- O tempo é convertido para segundos e **Fs = 1/mediana(Δt)**. Em modo Auto, valores de tempo numéricos com passo mediano ≥1 são tratados como milissegundos (comum no `millis()` do Arduino); confira e ajuste a unidade quando necessário.
+- A média do sinal é removida antes da análise. Valores em m/s² são convertidos para g.
+- PSD bruta: estimativa de Welch do registro completo, janela Hann. PSD representativa: média aritmética das PSDs de segmentos completos e consecutivos, sem sobreposição; a PSD bruta permanece exibida para preservar picos e variações do registro.
+- O Grms da PSD é a raiz da integral numérica da densidade espectral. A tabela também mostra energia integrada na banda de comparação, não o valor global publicado para qualificar um ensaio.
+- RMSE log-PSD é a raiz da média do erro quadrático em log₁₀(g²/Hz), calculado nos bins observados que caem na banda comparável e dentro do domínio do perfil. O RMSE de forma centraliza cada curva em log antes da comparação. Razão Grms é experimental/referência na mesma banda.
 
-st.subheader('3. PSD — ensaio × referências')
-m=(f_psd>=max(fmin,.01))&(f_psd<=fmax)
-fig=go.Figure(go.Scatter(x=f_psd[m],y=p[m],mode='lines',name=f'Ensaio — {axis}',line={'width':2}))
-for name,curve in NORMS.items():
-    q=(curve[:,0]>=max(fmin,.01))&(curve[:,0]<=fmax)
-    if q.sum()>=2: fig.add_trace(go.Scatter(x=curve[q,0],y=curve[q,1],mode='lines+markers',name=name))
-fig.update_layout(xaxis_type='log',yaxis_type='log',xaxis_title='Frequência [Hz]',yaxis_title='PSD [g²/Hz]',height=550); st.plotly_chart(fig,use_container_width=True)
+### Fontes e limites
+- **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 e Table X1.3. Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
+- **ISO 13355**, perfil indicativo transcrito na Table X1.3 da ASTM D4728 fornecida. O projeto não contém cópia separada da ISO.
+- **ISTA 3E (2005)**, Random Vibration Spectrum, valores transcritos da referência discutida na conversa. O projeto não contém cópia separada da ISTA.
 
-st.subheader('4. Similaridade espectral')
-rows=[]
-for name,curve in NORMS.items():
-    r=similarity(f_psd,p,curve)
-    rows.append({'Referência':name,'Faixa comum [Hz]':f"{r['fmin']:.2f}–{r['fmax']:.2f}" if r else 'Insuficiente','RMSE absoluto [décadas]':r['abs_rmse'] if r else np.nan,'Similaridade nível + forma [%]':r['abs_score'] if r else np.nan,'RMSE forma [décadas]':r['shape_rmse'] if r else np.nan,'Similaridade de forma [%]':r['shape_score'] if r else np.nan})
-sim=pd.DataFrame(rows); st.dataframe(sim,use_container_width=True,hide_index=True)
-if sim['Similaridade nível + forma [%]'].notna().any():
-    best=sim.loc[sim['Similaridade nível + forma [%]'].idxmax(),'Referência']; st.success(f'Mais semelhante matematicamente: **{best}**')
-st.warning("'Mais semelhante' não significa 'conforme à norma'. É um ranking matemático da PSD medida contra as referências.")
-
-st.subheader('5. GRMS')
-grows=[{'Referência':'Ensaio','Faixa [Hz]':f'{fmin:.2f}–{fmax:.2f}','GRMS [g]':G}]
-for name,curve in NORMS.items():
-    lo=max(fmin,curve[:,0].min()); hi=min(fmax,curve[:,0].max())
-    if hi>lo:
-        fd=np.geomspace(lo,hi,3000); _,pr=interp_ref(fd,curve); grows.append({'Referência':name,'Faixa [Hz]':f'{lo:.2f}–{hi:.2f}','GRMS [g]':np.sqrt(np.trapezoid(pr,fd))})
-st.dataframe(pd.DataFrame(grows),use_container_width=True,hide_index=True)
-
-with st.expander('Metodologia incorporada'):
-    st.markdown('''**FFT:** transformada rápida de Fourier após remoção da média.\n\n**PSD:** método de Welch, janela Hann, 50% de sobreposição.\n\n**GRMS:** raiz da integral da PSD na faixa selecionada.\n\n**Referências:** ASTM D4728-06 Appendix X1 Table X1.1 (Truck), ISO 13355 profile reproduzido em Table X1.3 da ASTM D4728-06 e ISTA 3E (2005).\n\nA comparação é feita somente na faixa comum entre o ensaio e a referência.''')
-
-st.subheader('6. Exportação')
-summary=pd.DataFrame({'Parâmetro':['Arquivo','Eixo','Amostras','Duração [s]','Fs [Hz]','Nyquist [Hz]','Média [g]','RMS AC [g]','GRMS [g]','Faixa [Hz]'], 'Valor':[up.name,axis,len(x),len(x)/fs,fs,nyq,x.mean(),np.sqrt(np.mean(xac**2)),G,f'{fmin}–{fmax}']})
-st.download_button('Baixar resumo CSV',summary.to_csv(index=False).encode(),file_name='resumo_analise_vibracao.csv',mime='text/csv')
-st.download_button('Baixar PSD CSV',pd.DataFrame({'frequency_Hz':f_psd,'PSD_g2_per_Hz':p}).to_csv(index=False).encode(),file_name='PSD_ensaio.csv',mime='text/csv')
+Confirme edição, tabela, breakpoints e condições de aplicação nas publicações oficiais antes de reproduzir valores em texto acadêmico. Os perfis são referências de comparação, e similaridade não implica conformidade.
+""")
