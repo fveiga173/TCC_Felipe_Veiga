@@ -1,6 +1,6 @@
 # Analisador de vibração — TCC
 
-Aplicativo Streamlit para importar CSV do registrador Arduino e inspecionar sinal, FFT, PSD experimental bruta, PSD experimental representativa (média de segmentos), Grms e comparação com perfis de referência ASTM D4728, ISO 13355 e ISTA 3E.
+Aplicativo Streamlit para importar CSV do registrador Arduino e inspecionar sinal, FFT, PSD experimental representativa (média de segmentos), Grms e comparação com perfis de referência ASTM D4728, ISO 13355 e ISTA 3E.
 
 ## Executar
 
@@ -18,23 +18,23 @@ streamlit run app.py
 
 ## Formato do CSV
 
-O app tenta detectar separador e cabeçalho automaticamente. Selecione a coluna de tempo, o eixo de aceleração e suas unidades na interface. O firmware `MPU6050_SD_logger.ino` do projeto produz dados de tempo e aceleração por eixo. Exporte o registro como CSV com uma linha de cabeçalho, por exemplo:
+O app tenta detectar separador e cabeçalho automaticamente. O CSV deve conter `time_s` em segundos e os eixos de aceleração em g. Na interface, selecione somente o eixo; a duração do segmento PSD pode ser ajustada. Exemplo:
 
 ```csv
-time_ms,ax,ay,az
-0,0.014,-0.021,1.002
-10,0.017,-0.019,0.998
+time_s,ax,ay,az
+0.000,0.014,-0.021,1.002
+0.010,0.017,-0.019,0.998
 ```
 
-O app estima `Fs = 1/mediana(Δt)`. Em unidade de tempo `Auto`, uma coluna numérica cujo passo mediano seja pelo menos 1 é interpretada como milissegundos (caso comum do `millis()`); verifique isso e escolha explicitamente s, ms ou µs se a inferência não corresponder ao arquivo. A unidade da aceleração pode ser g ou m/s².
+O app estima `Fs = 1/mediana(Δt)`. Se o firmware exportar tempo em milissegundos (`time_ms`), converta a coluna para segundos e nomeie-a `time_s` antes de importar.
 
 ## Método e interpretação
 
 - Remove-se a componente média do eixo selecionado.
 - A FFT com janela Hann é exibida para inspeção espectral.
-- A PSD bruta é uma estimativa de Welch do registro completo. A PSD representativa é a média aritmética das PSDs de segmentos completos consecutivos, sem sobreposição. Ambas ficam visíveis; “média de segmentos” descreve a operação e não significa uma PSD filtrada ou ajustada à curva normativa.
+- A PSD representativa é a média aritmética das PSDs de segmentos completos consecutivos, sem sobreposição. O app a usa como resumo espectral do teste; “média de segmentos” descreve a operação e não significa que o sinal temporal foi filtrado ou ajustado à curva normativa.
 - Os perfis normativos são definidos por breakpoints e conectados por interpolação log-log (lei de potência). Isso é somente a representação computacional entre pontos e não afirma que as normas aplicaram suavização.
-- O app compara RMSE em log-PSD, forma espectral (curvas centradas em log-PSD) e razão de Grms experimental/referência, na faixa escolhida e dentro da cobertura do perfil. A tabela inclui os Grms globais publicados como contexto; o cálculo na banda observada não os substitui.
+- O app mostra uma tabela compacta com o Grms do ensaio medido e o Grms integrado de cada perfil de referência na faixa selecionada.
 - Proximidade numérica não demonstra conformidade. A conformidade depende de requisitos completos da edição aplicável, configuração e procedimento de ensaio.
 
 ## Proveniência dos perfis
