@@ -1,52 +1,33 @@
-# Analisador de vibração — TCC
+# Analisador de vibração para TCC — versão 2.0
 
-Aplicativo Streamlit para importar CSV do registrador Arduino e inspecionar sinal, FFT, PSD experimental representativa (média de segmentos), Grms e comparação com perfis de referência ASTM D4728, ISO 13355 e ISTA 3E.
-
-## Executar
-
-Requer Python 3.10 ou superior.
+Extraia o ZIP numa pasta. No terminal dessa pasta:
 
 ```bash
-python -m venv .venv
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# macOS/Linux:
-source .venv/bin/activate
 python -m pip install -r requirements.txt
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
-## Formato do CSV
+A versão anterior pode ser mantida em outra pasta. O arquivo original enviado foi preservado.
 
-O app tenta detectar separador e cabeçalho automaticamente. O CSV deve conter `time_s` em segundos e os eixos de aceleração em g. Na interface, selecione somente o eixo; a duração do segmento PSD pode ser ajustada. Exemplo:
+CSV: coluna time_s em segundos e uma ou mais colunas de aceleração. Eixo Z é selecionado por padrão quando existe. Informe unidade e escala conforme o firmware. A opção de demonstração gera um sinal sintético, sem precisar enviar arquivo.
 
-```csv
-time_s,ax,ay,az
-0.000,0.014,-0.021,1.002
-0.010,0.017,-0.019,0.998
-```
+## Fluxo
+1. Diagnosticar aquisição e identificar o contexto (manual, veículo ou mesa).
+2. Selecionar trecho e configurar janelas Welch e RMS.
+3. Inspecionar sinal original, RMS no tempo e distribuição ponderada pela duração.
+4. Comparar PSD e Grms numa banda comum e exportar dados e parâmetros.
 
-O app estima `Fs = 1/mediana(Δt)`. Se o firmware exportar tempo em milissegundos (`time_ms`), converta a coluna para segundos e nomeie-a `time_s` antes de importar.
+## Limites importantes
+- Intervalos irregulares bloqueiam a PSD por padrão. É possível habilitar explicitamente uma análise exploratória com Fs pela mediana; ela não corrige a irregularidade e não deve fundamentar ensaios.
+- Triagem: variação relativa dos intervalos >5% ou algum intervalo >1,5 vezes a mediana. Esses valores não são tolerâncias normativas.
+- Linhas inválidas, tempos duplicados ou regressivos não são descartados silenciosamente.
+- Diagnóstico temporal e Fs consideram o arquivo inteiro. Selecionar um trecho não elimina os alertas originais.
+- Nenhuma reamostragem, remoção de picos ou filtragem automática é aplicada.
+- RMS temporal usa toda a banda adquirida; Grms de comparação usa a banda comum indicada. Não são diretamente intercambiáveis.
+- RMS por intervalo remove a média local. A distribuição usa duração real, incluindo o último intervalo parcial.
+- A média de Welch exclui o remanescente que não forma um segmento completo; a interface informa sua extensão.
+- Perfis ASTM e ISO foram conferidos nas tabelas X1.1 e X1.3 da ASTM D4728-06 fornecida. A ISO é identificada como reprodução nessa fonte. ISTA aguarda confirmação documental.
+- Sem validação de calibração, banda útil ou representatividade de percurso. Receitas e duração de ensaio pertencem à próxima etapa do TCC.
 
-O firmware `MPU6050_SD_logger.ino` foi configurado para uma taxa-alvo de 500 amostras/s, adequada como referência para analisar até 50 Hz (10 amostras por ciclo). Ele não encerra ao atingir o limite de linhas do Excel: grava até ocorrer falha de leitura ou erro no cartão/alimentação. O tamanho final depende do cartão SD, do sistema de arquivos e da bateria. O Excel não abre todas as linhas de arquivos grandes; isso é um limite do Excel, não do CSV. O app lê o arquivo completo em memória, então arquivos muito grandes também podem exceder a memória disponível no computador.
-
-## Método e interpretação
-
-- Remove-se a componente média do eixo selecionado.
-- A FFT com janela Hann é exibida para inspeção espectral.
-- A PSD representativa é a média aritmética das PSDs de segmentos completos consecutivos, sem sobreposição. O app a usa como resumo espectral do teste; “média de segmentos” descreve a operação e não significa que o sinal temporal foi filtrado ou ajustado à curva normativa.
-- Os perfis normativos são definidos por breakpoints e conectados por interpolação log-log (lei de potência). Isso é somente a representação computacional entre pontos e não afirma que as normas aplicaram suavização.
-- O app mostra uma tabela compacta com o Grms do ensaio medido e o Grms integrado de cada perfil de referência na faixa selecionada.
-- Os limites mínimo e máximo da faixa controlam a integração do Grms e a comparação; a PSD completa permanece visível. Uma faixa de frequência define banda de análise, não identifica se a fonte foi o pavimento, motor ou transmissão.
-- Proximidade numérica não demonstra conformidade. A conformidade depende de requisitos completos da edição aplicável, configuração e procedimento de ensaio.
-
-## Proveniência dos perfis
-
-Os breakpoints embutidos são: ASTM D4728-06, Appendix X1, Table X1.1 (Truck); ISO 13355, Annex A, Table A.1, conforme imagem de referência enviada; e ISTA 3E (2005), Random Vibration Spectrum. Para ASTM existe PDF no diretório `sources/`. Não há cópias independentes da ISO 13355 nem ISTA 3E neste projeto. Confira os valores, a edição e as condições de aplicação na publicação oficial/licenciada antes de citar ou usar para qualificar um ensaio. Os breakpoints ASTM Truck e ISTA 3E usados aqui são equivalentes conforme a transcrição de referência disponível.
-
-## Limitações
-
-Este é um analisador de apoio ao TCC, não um instrumento certificado nem uma ferramenta de declaração de conformidade. Amostragem irregular, aliasing, orientação/montagem do sensor, calibração, faixa dinâmica e transientes podem afetar os resultados. A advertência de jitter aparece na interface quando a variação dos intervalos de amostragem excede 5%. Verifique que a frequência de Nyquist cobre a banda de interesse e que a aquisição não saturou.
-
-
-O acelerômetro na carroceria registra a resposta total no local: a contribuição do pavimento pode coexistir com motor e transmissão. A literatura relaciona explicitamente vibração veicular à excitação do pavimento e do motor ([Du et al., 2020](https://doi.org/10.1080/10298436.2020.1830092)). Para atribuir componentes ao motor, é necessário RPM/tacômetro sincronizado; order tracking com várias referências de rotação e acelerômetros em pontos distintos foi estudado por [Blough (SAE, 2005)](https://doi.org/10.4271/2005-01-2265). Sem esses dados, o aplicativo reporta o resultado total medido e não filtra faixas presumidas como motor.
+## Arquivo TEST019
+O teste manual de 4.800 amostras apresenta duração de 23,091 s, taxa média aproximada de 207,83 amostras/s e taxa pela mediana de 225,02 Hz. Não demonstra aquisição uniforme a 500 Hz. Há indícios de limite ±4 g. Conferir o código Arduino antes de definir a coleta em veículo.
