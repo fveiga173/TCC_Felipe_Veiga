@@ -102,7 +102,7 @@ with tabs[0]:
     st.caption("FFT de amplitude para inspeção. Welch fornece a PSD e o Grms espectral; pequenas diferenças em relação ao Grms temporal decorrem de janelamento/estimativa.")
 
 with tabs[1]:
-    fmin = max(float(f_rep[1]), 0.01); fmax = min(fs/2, 200.)
+    fmin = max(float(f_rep[1]), 0.01); fmax = min(fs/2, 1000.)
     if fmax <= fmin: st.warning("Faixa amostral insuficiente para comparar os perfis (limite superior <= inferior).")
     else:
         low = st.number_input("Frequência mínima de comparação (Hz)", min_value=fmin, max_value=fmax, value=max(fmin, 1.0), key="low")
@@ -122,7 +122,25 @@ with tabs[1]:
             ref = interp_loglog(prof["f"], prof["p"], fgrid[mask])
             fig.add_trace(go.Scatter(x=fgrid[mask], y=ref, name=name, mode="lines", line={"dash":"dash"}))
             results.append({"Perfil":name,"Grms":float(np.sqrt(np.trapezoid(ref, fgrid[mask])))})
-        fig.update_layout(title="PSD representativa e perfis de referência", xaxis_title="Frequência (Hz)", yaxis_title="PSD (g²/Hz)", xaxis_type="log", yaxis_type="log", height=540, legend={"orientation":"h"}); st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            title="PSD representativa e perfis de referência",
+            xaxis={
+                "title":"Frequência (Hz)", "type":"log", "range":[0, 3],
+                "tickmode":"array", "tickvals":[1, 10, 100, 1000],
+                "ticktext":["1", "10", "100", "1000"],
+                "showgrid":True, "gridcolor":"#555555", "gridwidth":1,
+                "minor":{"showgrid":True, "dtick":0.1, "gridcolor":"#c8c8c8", "griddash":"dot"},
+            },
+            yaxis={
+                "title":"PSD (g²/Hz)", "type":"log", "range":[-5, -1],
+                "tickmode":"array", "tickvals":[1e-5, 1e-4, 1e-3, 1e-2, 1e-1],
+                "ticktext":["0.00001", "0.0001", "0.001", "0.01", "0.1"],
+                "showgrid":True, "gridcolor":"#555555", "gridwidth":1,
+                "minor":{"showgrid":True, "dtick":0.1, "gridcolor":"#c8c8c8", "griddash":"dot"},
+            },
+            height=540, legend={"orientation":"h"}, margin={"l":80, "r":30, "t":70, "b":80},
+        )
+        st.plotly_chart(fig, use_container_width=True)
         if results:
             out=pd.DataFrame(results)
             st.dataframe(out, use_container_width=True, hide_index=True)
