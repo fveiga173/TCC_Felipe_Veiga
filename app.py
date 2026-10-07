@@ -41,6 +41,8 @@ if not uploaded:
 
 **Método:** a PSD experimental representativa é a média aritmética das PSDs de segmentos completos, sem sobreposição. Ela resume o conteúdo espectral do teste e reduz a variabilidade entre segmentos. Não remove frequências do sinal temporal.
 
+**Origem da vibração:** o acelerômetro mede a resposta total no ponto instalado. Sem uma referência de rotação do motor ou outra medição sincronizada, este app não separa a parcela excitada pelo pavimento daquela transmitida pelo motor/transmissão. Não se deve remover uma faixa fixa de frequência presumindo que seja “vibração do motor”; ordens do motor variam com RPM e podem se sobrepor às respostas da carroceria.
+
 As curvas normativas são especificadas por breakpoints. Entre eles, o app usa interpolação log-log (lei de potência) como representação computacional do perfil, não como alegação de suavização empregada pela norma. O perfil ISTA 3E e ASTM Truck acima têm os mesmos breakpoints conforme a transcrição usada; a comparação resultará igual.
 
 Similaridade espectral não demonstra conformidade. Conformidade depende do método de ensaio, tolerâncias, montagem, duração, faixa, equipamento e demais requisitos da edição aplicável.
@@ -105,8 +107,9 @@ with tabs[1]:
     fmin = max(float(f_rep[1]), 0.01); fmax = min(fs/2, 1000.)
     if fmax <= fmin: st.warning("Faixa amostral insuficiente para comparar os perfis (limite superior <= inferior).")
     else:
-        low = st.number_input("Frequência mínima de comparação (Hz)", min_value=fmin, max_value=fmax, value=max(fmin, 1.0), key="low")
-        high = st.number_input("Frequência máxima de comparação (Hz)", min_value=low, max_value=fmax, value=fmax, key="high")
+        low = st.number_input("Frequência mínima para Grms e comparação (Hz)", min_value=fmin, max_value=fmax, value=max(fmin, 1.0), key="low")
+        high = st.number_input("Frequência máxima para Grms e comparação (Hz)", min_value=low, max_value=fmax, value=fmax, key="high")
+        st.caption("A PSD completa continua visível. Esses limites definem apenas a banda usada para integrar Grms e comparar os perfis; escolher uma banda não separa vibração de motor e de estrada.")
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=f_rep[1:], y=psd_rep[1:], name="PSD experimental representativa (média de segmentos)", mode="lines", line={"width":2, "color":"#1769aa"}))
         fgrid = np.geomspace(low, high, 500)
@@ -238,6 +241,12 @@ with tabs[3]:
 - PSD representativa: média aritmética das PSDs de segmentos completos e consecutivos, sem sobreposição. Essa média reduz a variabilidade estatística entre segmentos e é usada como representação do teste; não modifica o sinal temporal nem a PSD individual dos segmentos.
 - O Grms é a raiz da integral numérica da PSD representativa. A tabela resume somente Grms do ensaio e dos perfis na faixa selecionada; não substitui o Grms global publicado nem avalia todos os requisitos de ensaio.
 - A aba “Teste senoidal” assume movimento harmônico vertical ideal de curso pico a pico fixo e calcula o Grms teórico de cada tom. Ela ajusta os tempos para igualar o Grms global do veículo quando isso é matematicamente possível no intervalo selecionado; em mesa rotativa/reciprocante real, confirme o Grms com acelerômetro. Não iguala a PSD por banda nem estabelece equivalência de resposta/dano ou conformidade.
+
+### Origem do sinal medido
+- O PSD representa a vibração total no ponto do acelerômetro. O app não atribui automaticamente energia espectral à estrada, ao motor ou à transmissão.
+- Ordens de rotação do motor mudam de frequência com o RPM e podem coincidir com modos/respostas da carroceria. Portanto, um corte fixo por frequência pode eliminar energia da via junto com energia do motor.
+- Para separar fontes com confiança, sincronize aceleração com RPM/tacômetro (e, idealmente, velocidade do veículo) e use análise de ordem/coerência ou um protocolo pareado de medição. Sem essa referência, interprete o resultado como resposta total medida na carroceria, não como “road-only”.
+- A literatura de medição de vibração veicular trata conjuntamente contribuições da rugosidade do pavimento e do motor; análises de ordem usam tacômetros sincronizados e sensores em locais distintos. Referências: Du et al. (2020), https://doi.org/10.1080/10298436.2020.1830092; Blough (SAE 2005), https://doi.org/10.4271/2005-01-2265.
 
 ### Fontes e limites
 - **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 e Table X1.3. Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
