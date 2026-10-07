@@ -20,7 +20,7 @@ PROFILES = {
     "ASTM D4728 — Truck (Appendix X1, Table X1.1)": {
         "f": np.array([1, 4, 16, 40, 80, 200.]),
         "p": np.array([5e-5, 1e-2, 1e-2, 1e-3, 1e-3, 1e-5]), "overall": .52},
-    "ISO 13355 — perfil indicativo (Table X1.3 da cópia citada)": {
+    "ISO 13355 — Annex A, Table A.1": {
         "f": np.array([3, 6, 18, 40, 200.]),
         "p": np.array([5e-4, 1.2e-2, 1.2e-2, 1e-3, 5e-4]), "overall": .59},
     "ISTA 3E — Random Vibration Spectrum (2005)": {
@@ -37,7 +37,7 @@ if not uploaded:
     st.info("Envie um CSV com a coluna `time_s` (segundos) e ao menos um eixo de aceleração em g.")
     with st.expander("Fontes e notas metodológicas", expanded=True):
         st.markdown("""
-**Perfis embutidos:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck); perfil atribuído à ISO 13355 na Table X1.3 do Appendix X1 da ASTM; ISTA 3E (2005), Random Vibration Spectrum. Breakpoints transcritos a partir das referências associadas ao projeto e da conversa citada. A ISO e a ISTA não foram fornecidas como arquivos independentes neste projeto; confirme valores e edição na cópia licenciada/adotada antes de citar no TCC.
+**Perfis embutidos:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck); ISO 13355, Annex A, Table A.1 (conforme a imagem de referência enviada); ISTA 3E (2005), Random Vibration Spectrum. A ISO e a ISTA não foram fornecidas como arquivos independentes neste projeto; confira a edição e os valores na publicação adotada antes de citar no TCC.
 
 **Método:** a PSD experimental representativa é a média aritmética das PSDs de segmentos completos, sem sobreposição. Ela resume o conteúdo espectral do teste e reduz a variabilidade entre segmentos. Não remove frequências do sinal temporal.
 
@@ -120,10 +120,15 @@ with tabs[1]:
         measured_grms = float(np.sqrt(np.trapezoid(psd_rep[measured_band], f_rep[measured_band]))) if measured_band.sum() >= 2 else np.nan
         results.append({"Perfil":"Ensaio medido — média de segmentos", "Grms":measured_grms})
         for name, prof in PROFILES.items():
+            # Mostrar toda a referência pelos seus breakpoints, sem recortá-la
+            # pela Fs do registro ou pela banda usada na comparação de Grms.
+            fig.add_trace(go.Scatter(
+                x=prof["f"], y=prof["p"], name=name, mode="lines+markers",
+                line={"dash":"dash", "width":2}, marker={"symbol":"diamond", "size":7},
+            ))
             mask = (fgrid >= max(prof["f"][0], low)) & (fgrid <= min(prof["f"][-1], high))
             if mask.sum() < 2: continue
             ref = interp_loglog(prof["f"], prof["p"], fgrid[mask])
-            fig.add_trace(go.Scatter(x=fgrid[mask], y=ref, name=name, mode="lines", line={"dash":"dash"}))
             results.append({"Perfil":name,"Grms":float(np.sqrt(np.trapezoid(ref, fgrid[mask])))})
         fig.update_layout(
             title="PSD representativa e perfis de referência",
@@ -249,8 +254,8 @@ with tabs[3]:
 - A literatura de medição de vibração veicular trata conjuntamente contribuições da rugosidade do pavimento e do motor; análises de ordem usam tacômetros sincronizados e sensores em locais distintos. Referências: Du et al. (2020), https://doi.org/10.1080/10298436.2020.1830092; Blough (SAE 2005), https://doi.org/10.4271/2005-01-2265.
 
 ### Fontes e limites
-- **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 e Table X1.3. Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
-- **ISO 13355**, perfil indicativo transcrito na Table X1.3 da ASTM D4728 fornecida. O projeto não contém cópia separada da ISO.
+- **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 (Truck). Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
+- **ISO 13355**, Annex A, Table A.1, de acordo com a imagem de referência enviada. O projeto não contém cópia separada da ISO.
 - **ISTA 3E (2005)**, Random Vibration Spectrum, valores transcritos da referência discutida na conversa. O projeto não contém cópia separada da ISTA.
 
 Confirme edição, tabela, breakpoints e condições de aplicação nas publicações oficiais antes de reproduzir valores em texto acadêmico. ASTM D4169 é uma prática de planos sequenciais de ensaio de embalagens: inclui opção aleatória por D4728 e opção senoidal por D999 métodos B/C. A mesa rotativa de curso fixo pode corresponder a D999 método A2 (choque repetitivo), uma modalidade distinta. O catálogo ASTM de D4728 informa que não há equivalência direta geral entre ensaios aleatórios e senoidais. Curso de 25,4 mm e faixa 5–50 Hz são parâmetros informados para a mesa, não propriedades universais da D4169.
