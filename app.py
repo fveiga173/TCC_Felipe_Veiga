@@ -133,53 +133,84 @@ with tabs[1]:
         st.download_button("Baixar PSD experimental CSV", expdf.to_csv(index=False).encode("utf-8-sig"), "psd_experimental.csv", "text/csv")
 
 with tabs[2]:
-    st.subheader("Sequência senoidal comprimida — planejamento exploratório")
-    st.warning("Uma sequência senoidal de frequência única por vez não reproduz uma PSD aleatória. O cronograma abaixo distribui o tempo de ensaio conforme a fração de potência integrada da PSD medida em cada banda; com amplitude fixa, isso NÃO iguala a PSD por banda nem demonstra dano equivalente. Use como roteiro exploratório, não como ensaio equivalente ou conforme.")
-    st.markdown("A equivalência de dano publicada entre excitação aleatória e senoidal requer um modelo de dano e a resposta da estrutura/produto (por exemplo, FDS, amortecimento/resposta e parâmetros de fadiga). A PSD de entrada isolada não determina um tempo senoidal comprimido único.")
-    safe_min = max(float(f_rep[1]), 0.1)
-    safe_max = min(fs / 2, 200.0, float(f_rep[-1]))
-    if safe_max <= safe_min:
-        st.warning("A faixa de frequência amostrada é insuficiente para gerar a sequência.")
+    st.subheader("Ensaio senoidal comprimido — mesa de curso fixo")
+    st.markdown("Com a hipótese de movimento vertical senoidal ideal e curso pico a pico fixo, o Grms do tom é **Grms(f) = (2πf)² × (curso p-p / 2) / (√2 × g)**. O app redistribui os tempos entre etapas para igualar o Grms global medido no veículo, se houver uma solução dentro da faixa de frequência e do curso informados.")
+    st.warning("Confira o tipo de mesa antes de executar: a ASTM D4169 separa a opção aleatória (D4728) da opção senoidal (D999, métodos B/C). Uma mesa descrita como rotativa/reciprocante com curso fixo pode corresponder à D999 A2, de choques repetitivos, que não é um seno puro. Esta conta é uma estimativa harmônica idealizada; no movimento rotativo real, confirme o Grms com acelerômetro na mesa carregada. Igualar apenas o Grms não iguala a PSD, a resposta do produto ou o dano.")
+    sample_high = min(fs / 2, float(f_rep[-1]))
+    freq_min_allowed = max(5.0, float(f_rep[1]))
+    freq_max_allowed = min(50.0, sample_high)
+    if freq_max_allowed <= freq_min_allowed:
+        st.error("O registro não cobre suficientemente a faixa de 5–50 Hz. Verifique Fs e a duração do segmento PSD.")
     else:
-        c1, c2, c3 = st.columns(3)
-        f_low = c1.number_input("Frequência mínima (Hz)", min_value=safe_min, max_value=safe_max, value=max(safe_min, min(1.0, safe_max)), key="sine_low")
-        f_high = c2.number_input("Frequência máxima (Hz)", min_value=f_low, max_value=safe_max, value=safe_max, key="sine_high")
-        n_bands = c3.number_input("Número de etapas", min_value=2, max_value=40, value=10, step=1)
-        d1, d2 = st.columns(2)
-        total_s = d1.number_input("Duração total comprimida (s)", min_value=1.0, value=300.0, step=30.0)
-        amp_value = d2.number_input("Amplitude fixa da bancada", min_value=0.001, value=0.1, step=0.01, help="Informe o valor configurado pela bancada e selecione se é pico ou RMS.")
-        amp_kind = st.radio("A amplitude informada é", ["g RMS", "g pico"], horizontal=True, key="sine_amp_kind")
-        accel_rms = amp_value if amp_kind == "g RMS" else amp_value / np.sqrt(2)
-        accel_peak = amp_value * np.sqrt(2) if amp_kind == "g RMS" else amp_value
+        cfg1, cfg2, cfg3 = st.columns(3)
+        stroke_pp_mm = cfg1.number_input("Curso pico a pico da mesa (mm)", min_value=0.1, max_value=200.0, value=25.4, step=0.1)
+        f_low = cfg2.number_input("Frequência mínima (Hz)", min_value=freq_min_allowed, max_value=freq_max_allowed, value=freq_min_allowed, key="sine_low")
+        f_high = cfg3.number_input("Frequência máxima (Hz)", min_value=f_low, max_value=freq_max_allowed, value=freq_max_allowed, key="sine_high")
+        cfg4, cfg5 = st.columns(2)
+        n_bands = cfg4.number_input("Número de etapas de frequência", min_value=2, max_value=30, value=8, step=1)
+        total_s = cfg5.number_input("Duração total comprimida (s; mínimo 5 s)", min_value=5.0, value=300.0, step=30.0)
+
+        target_high = min(50.0, sample_high)
+        if sample_high < 50.0:
+            st.warning(f"Este registro cobre até {sample_high:.2f} Hz; o Grms alvo será calculado somente de 5 a {target_high:.2f} Hz, não na faixa completa de 5–50 Hz.")
+        vehicle_mask = (f_rep >= 5.0) & (f_rep <= target_high)
+        vehicle_grms = float(np.sqrt(np.trapezoid(psd_rep[vehicle_mask], f_rep[vehicle_mask]))) if vehicle_mask.sum() >= 2 else 0.0
+        target = st.number_input(f"Grms alvo do veículo na banda 5–{target_high:g} Hz", min_value=0.001, max_value=100.0, value=max(0.001, vehicle_grms), step=0.01, format="%.4f", help="Calculado automaticamente da PSD representativa na faixa disponível até 50 Hz; pode ser editado.")
 
         edges = np.geomspace(f_low, f_high, int(n_bands) + 1)
         centers = np.sqrt(edges[:-1] * edges[1:])
         band_power = []
         for left, right in zip(edges[:-1], edges[1:]):
             band_f = np.linspace(left, right, 100)
-            band_psd = np.interp(np.log10(band_f), np.log10(f_rep[1:]), np.log10(np.maximum(psd_rep[1:], 1e-30)))
-            band_power.append(float(np.trapezoid(10**band_psd, band_f)))
+            band_log_psd = np.interp(np.log10(band_f), np.log10(f_rep[1:]), np.log10(np.maximum(psd_rep[1:], 1e-30)))
+            band_power.append(float(np.trapezoid(10**band_log_psd, band_f)))
         band_power = np.asarray(band_power)
         if band_power.sum() <= 0:
             st.error("Não há potência espectral positiva na faixa selecionada.")
         else:
-            shares = band_power / band_power.sum()
-            dwell = total_s * shares
-            disp_mm = accel_peak * 9.80665 / ((2 * np.pi * centers) ** 2) * 1000
-            schedule = pd.DataFrame({
+            measured_shares = band_power / band_power.sum()
+            stroke_peak_m = stroke_pp_mm / 2000.0
+            bench_grms = ((2 * np.pi * centers) ** 2 * stroke_peak_m) / (np.sqrt(2) * 9.80665)
+            bench_g2 = bench_grms ** 2
+            base_grms = float(np.sqrt(np.dot(measured_shares, bench_g2)))
+            achievable_min, achievable_max = float(np.min(bench_grms)), float(np.max(bench_grms))
+            dwell_shares = measured_shares.copy()
+            feasible = achievable_min - 1e-9 <= target <= achievable_max + 1e-9
+            if feasible:
+                base_g2 = float(np.dot(measured_shares, bench_g2))
+                target_g2 = target ** 2
+                if target_g2 > base_g2 + 1e-12:
+                    idx = int(np.argmax(bench_g2)); endpoint_g2 = float(bench_g2[idx])
+                    lam = (target_g2 - base_g2) / (endpoint_g2 - base_g2) if endpoint_g2 > base_g2 else 0.0
+                    dwell_shares = (1-lam) * measured_shares
+                    dwell_shares[idx] += lam
+                elif target_g2 < base_g2 - 1e-12:
+                    idx = int(np.argmin(bench_g2)); endpoint_g2 = float(bench_g2[idx])
+                    lam = (base_g2 - target_g2) / (base_g2 - endpoint_g2) if base_g2 > endpoint_g2 else 0.0
+                    dwell_shares = (1-lam) * measured_shares
+                    dwell_shares[idx] += lam
+            predicted = float(np.sqrt(np.dot(dwell_shares, bench_g2)))
+            if not feasible:
+                st.error(f"Não é possível atingir {target:.4g} Grms apenas redistribuindo os tempos: com curso de {stroke_pp_mm:.1f} mm p-p e a faixa selecionada, os tons ficam entre {achievable_min:.4g} e {achievable_max:.4g} Grms. O mínimo da faixa escolhida já excede ou o máximo não alcança o alvo.")
+                st.caption(f"Com tempos ponderados pela energia medida, o Grms teórico seria {base_grms:.4g} g. Para atingir alvo abaixo do mínimo seria necessário reduzir o curso, adicionar períodos sem vibração (o que não equivale ao nível de teste) ou usar outra mesa/configuração.")
+            else:
+                st.success(f"Grms teórico da sequência: {predicted:.4g} g — alvo: {target:.4g} g. A distribuição de tempos foi ajustada para fechar o Grms global, preservando o perfil medido como ponto de partida.")
+            dwell = total_s * dwell_shares
+            disp_peak_mm = stroke_pp_mm / 2
+            table = pd.DataFrame({
                 "Etapa": np.arange(1, len(centers) + 1),
                 "Frequência (Hz)": centers,
-                "Tempo sugerido (s)": dwell,
-                "Potência medida na banda (g²)": band_power,
-                "Parcela da potência medida (%)": shares * 100,
-                "Amplitude configurada": amp_value,
-                "Unidade da amplitude": amp_kind,
-                "Deslocamento de pico estimado (mm)": disp_mm,
+                "Tempo (s)": dwell,
+                "Grms teórico do tom": bench_grms,
+                "Fração de tempo (%)": dwell_shares * 100,
+                "Ponderação PSD medida (%)": measured_shares * 100,
+                "Curso (mm p-p)": stroke_pp_mm,
+                "Deslocamento pico (mm)": disp_peak_mm,
             })
-            st.caption(f"Amplitude considerada: {accel_rms:.4g} g RMS ({accel_peak:.4g} g pico). Deslocamento calculado para seno em aceleração constante; confirme o limite de curso da bancada, especialmente nas menores frequências.")
-            st.dataframe(schedule.round(4), use_container_width=True, hide_index=True)
-            st.download_button("Baixar cronograma senoidal CSV", schedule.to_csv(index=False).encode("utf-8-sig"), "cronograma_senoidal_exploratorio.csv", "text/csv")
-            st.caption("Regra deste cronograma: bandas logarítmicas; frequência de cada etapa no centro geométrico da banda; tempo proporcional à área da PSD representativa nessa banda; duração total igual à informada. A amplitude fixa é apenas registrada e não é sintetizada a partir da PSD.")
+            st.dataframe(table.round(4), use_container_width=True, hide_index=True)
+            if feasible:
+                st.download_button("Baixar cronograma senoidal CSV", table.to_csv(index=False).encode("utf-8-sig"), "cronograma_senoidal_grms_alvo.csv", "text/csv")
+            st.caption(f"A PSD fornece a ponderação inicial dos tempos por potência de cada banda. Como o modelo mantém o curso, o Grms teórico de cada tom cresce com f²; os tempos são redistribuídos para que a média quadrática global chegue ao alvo quando viável. Registro original: {t[-1]-t[0]:.1f} s; teste comprimido: {total_s:.1f} s. Transições/rampas, impactos e movimento multiaxial da mesa real não entram nesta conta.")
 
 with tabs[3]:
     st.markdown("""
@@ -188,14 +219,14 @@ with tabs[3]:
 - A média do sinal é removida antes da análise.
 - PSD representativa: média aritmética das PSDs de segmentos completos e consecutivos, sem sobreposição. Essa média reduz a variabilidade estatística entre segmentos e é usada como representação do teste; não modifica o sinal temporal nem a PSD individual dos segmentos.
 - O Grms é a raiz da integral numérica da PSD representativa. A tabela resume somente Grms do ensaio e dos perfis na faixa selecionada; não substitui o Grms global publicado nem avalia todos os requisitos de ensaio.
-- A aba “Teste senoidal” cria um cronograma exploratório com frequência em bandas logarítmicas e tempos proporcionais à potência integrada medida em cada banda. Com amplitude fixa, ele não reproduz a PSD de entrada, não preserva a resposta do produto e não é uma equivalência de dano/conformidade.
+- A aba “Teste senoidal” assume movimento harmônico vertical ideal de curso pico a pico fixo e calcula o Grms teórico de cada tom. Ela ajusta os tempos para igualar o Grms global do veículo quando isso é matematicamente possível no intervalo selecionado; em mesa rotativa/reciprocante real, confirme o Grms com acelerômetro. Não iguala a PSD por banda nem estabelece equivalência de resposta/dano ou conformidade.
 
 ### Fontes e limites
 - **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 e Table X1.3. Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
 - **ISO 13355**, perfil indicativo transcrito na Table X1.3 da ASTM D4728 fornecida. O projeto não contém cópia separada da ISO.
 - **ISTA 3E (2005)**, Random Vibration Spectrum, valores transcritos da referência discutida na conversa. O projeto não contém cópia separada da ISTA.
 
-Confirme edição, tabela, breakpoints e condições de aplicação nas publicações oficiais antes de reproduzir valores em texto acadêmico. Os perfis são referências de comparação, e similaridade não implica conformidade.
+Confirme edição, tabela, breakpoints e condições de aplicação nas publicações oficiais antes de reproduzir valores em texto acadêmico. ASTM D4169 é uma prática de planos sequenciais de ensaio de embalagens: inclui opção aleatória por D4728 e opção senoidal por D999 métodos B/C. A mesa rotativa de curso fixo pode corresponder a D999 método A2 (choque repetitivo), uma modalidade distinta. O catálogo ASTM de D4728 informa que não há equivalência direta geral entre ensaios aleatórios e senoidais. Curso de 25,4 mm e faixa 5–50 Hz são parâmetros informados para a mesa, não propriedades universais da D4169.
 
 Para transformar aleatório em senoidal com equivalência de fadiga, é necessário avaliar dano potencial/FDS e resposta da estrutura, além de hipóteses sobre amortecimento e propriedades de fadiga. Pahor Kos, Slavič e Boltežar (2015) comparam sweep-sine e excitação aleatória por um modelo baseado em dano e dados de resposta estrutural: https://doi.org/10.1155/2014/340545. O cronograma simplificado deste app é somente uma distribuição exploratória de tempos, não implementa esse método.
 """)
