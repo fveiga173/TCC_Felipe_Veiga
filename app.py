@@ -92,7 +92,7 @@ f_rep = welch(x[:nperseg], fs=fs, window="hann", nperseg=nperseg, noverlap=0, de
 grms_time = float(np.sqrt(np.mean(x*x)))
 grms_psd = float(np.sqrt(np.trapezoid(psd_raw, freq)))
 
-tabs = st.tabs(["Sinal e FFT", "PSD e comparação", "Método e fontes"])
+tabs = st.tabs(["Sinal e FFT", "PSD e comparação", "Teste senoidal", "Método e fontes"])
 with tabs[0]:
     sig = go.Figure(); sig.add_trace(go.Scatter(x=t-t[0], y=x, name="Aceleração", mode="lines"))
     sig.update_layout(title="Aceleração (componente média removida)", xaxis_title="Tempo (s)", yaxis_title="Aceleração (g)", height=350); st.plotly_chart(sig, use_container_width=True)
@@ -133,12 +133,62 @@ with tabs[1]:
         st.download_button("Baixar PSD experimental CSV", expdf.to_csv(index=False).encode("utf-8-sig"), "psd_experimental.csv", "text/csv")
 
 with tabs[2]:
+    st.subheader("Sequência senoidal comprimida — planejamento exploratório")
+    st.warning("Uma sequência senoidal de frequência única por vez não reproduz uma PSD aleatória. O cronograma abaixo distribui o tempo de ensaio conforme a fração de potência integrada da PSD medida em cada banda; com amplitude fixa, isso NÃO iguala a PSD por banda nem demonstra dano equivalente. Use como roteiro exploratório, não como ensaio equivalente ou conforme.")
+    st.markdown("A equivalência de dano publicada entre excitação aleatória e senoidal requer um modelo de dano e a resposta da estrutura/produto (por exemplo, FDS, amortecimento/resposta e parâmetros de fadiga). A PSD de entrada isolada não determina um tempo senoidal comprimido único.")
+    safe_min = max(float(f_rep[1]), 0.1)
+    safe_max = min(fs / 2, 200.0, float(f_rep[-1]))
+    if safe_max <= safe_min:
+        st.warning("A faixa de frequência amostrada é insuficiente para gerar a sequência.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        f_low = c1.number_input("Frequência mínima (Hz)", min_value=safe_min, max_value=safe_max, value=max(safe_min, min(1.0, safe_max)), key="sine_low")
+        f_high = c2.number_input("Frequência máxima (Hz)", min_value=f_low, max_value=safe_max, value=safe_max, key="sine_high")
+        n_bands = c3.number_input("Número de etapas", min_value=2, max_value=40, value=10, step=1)
+        d1, d2 = st.columns(2)
+        total_s = d1.number_input("Duração total comprimida (s)", min_value=1.0, value=300.0, step=30.0)
+        amp_value = d2.number_input("Amplitude fixa da bancada", min_value=0.001, value=0.1, step=0.01, help="Informe o valor configurado pela bancada e selecione se é pico ou RMS.")
+        amp_kind = st.radio("A amplitude informada é", ["g RMS", "g pico"], horizontal=True, key="sine_amp_kind")
+        accel_rms = amp_value if amp_kind == "g RMS" else amp_value / np.sqrt(2)
+        accel_peak = amp_value * np.sqrt(2) if amp_kind == "g RMS" else amp_value
+
+        edges = np.geomspace(f_low, f_high, int(n_bands) + 1)
+        centers = np.sqrt(edges[:-1] * edges[1:])
+        band_power = []
+        for left, right in zip(edges[:-1], edges[1:]):
+            band_f = np.linspace(left, right, 100)
+            band_psd = np.interp(np.log10(band_f), np.log10(f_rep[1:]), np.log10(np.maximum(psd_rep[1:], 1e-30)))
+            band_power.append(float(np.trapezoid(10**band_psd, band_f)))
+        band_power = np.asarray(band_power)
+        if band_power.sum() <= 0:
+            st.error("Não há potência espectral positiva na faixa selecionada.")
+        else:
+            shares = band_power / band_power.sum()
+            dwell = total_s * shares
+            disp_mm = accel_peak * 9.80665 / ((2 * np.pi * centers) ** 2) * 1000
+            schedule = pd.DataFrame({
+                "Etapa": np.arange(1, len(centers) + 1),
+                "Frequência (Hz)": centers,
+                "Tempo sugerido (s)": dwell,
+                "Potência medida na banda (g²)": band_power,
+                "Parcela da potência medida (%)": shares * 100,
+                "Amplitude configurada": amp_value,
+                "Unidade da amplitude": amp_kind,
+                "Deslocamento de pico estimado (mm)": disp_mm,
+            })
+            st.caption(f"Amplitude considerada: {accel_rms:.4g} g RMS ({accel_peak:.4g} g pico). Deslocamento calculado para seno em aceleração constante; confirme o limite de curso da bancada, especialmente nas menores frequências.")
+            st.dataframe(schedule.round(4), use_container_width=True, hide_index=True)
+            st.download_button("Baixar cronograma senoidal CSV", schedule.to_csv(index=False).encode("utf-8-sig"), "cronograma_senoidal_exploratorio.csv", "text/csv")
+            st.caption("Regra deste cronograma: bandas logarítmicas; frequência de cada etapa no centro geométrico da banda; tempo proporcional à área da PSD representativa nessa banda; duração total igual à informada. A amplitude fixa é apenas registrada e não é sintetizada a partir da PSD.")
+
+with tabs[3]:
     st.markdown("""
 ### Processamento
 - O CSV deve conter `time_s` em segundos; o eixo de aceleração é tratado como g. **Fs = 1/mediana(Δt)**.
 - A média do sinal é removida antes da análise.
 - PSD representativa: média aritmética das PSDs de segmentos completos e consecutivos, sem sobreposição. Essa média reduz a variabilidade estatística entre segmentos e é usada como representação do teste; não modifica o sinal temporal nem a PSD individual dos segmentos.
 - O Grms é a raiz da integral numérica da PSD representativa. A tabela resume somente Grms do ensaio e dos perfis na faixa selecionada; não substitui o Grms global publicado nem avalia todos os requisitos de ensaio.
+- A aba “Teste senoidal” cria um cronograma exploratório com frequência em bandas logarítmicas e tempos proporcionais à potência integrada medida em cada banda. Com amplitude fixa, ele não reproduz a PSD de entrada, não preserva a resposta do produto e não é uma equivalência de dano/conformidade.
 
 ### Fontes e limites
 - **ASTM D4728-06**, Random Vibration Testing of Shipping Containers, Appendix X1, Table X1.1 e Table X1.3. Arquivo de referência no projeto: `sources/1 - ASTM-D4728-06-Random-vibration-test(1).pdf`.
@@ -146,4 +196,6 @@ with tabs[2]:
 - **ISTA 3E (2005)**, Random Vibration Spectrum, valores transcritos da referência discutida na conversa. O projeto não contém cópia separada da ISTA.
 
 Confirme edição, tabela, breakpoints e condições de aplicação nas publicações oficiais antes de reproduzir valores em texto acadêmico. Os perfis são referências de comparação, e similaridade não implica conformidade.
+
+Para transformar aleatório em senoidal com equivalência de fadiga, é necessário avaliar dano potencial/FDS e resposta da estrutura, além de hipóteses sobre amortecimento e propriedades de fadiga. Pahor Kos, Slavič e Boltežar (2015) comparam sweep-sine e excitação aleatória por um modelo baseado em dano e dados de resposta estrutural: https://doi.org/10.1155/2014/340545. O cronograma simplificado deste app é somente uma distribuição exploratória de tempos, não implementa esse método.
 """)

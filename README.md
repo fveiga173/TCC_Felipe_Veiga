@@ -35,6 +35,7 @@ O app estima `Fs = 1/mediana(Δt)`. Se o firmware exportar tempo em milissegundo
 - A PSD representativa é a média aritmética das PSDs de segmentos completos consecutivos, sem sobreposição. O app a usa como resumo espectral do teste; “média de segmentos” descreve a operação e não significa que o sinal temporal foi filtrado ou ajustado à curva normativa.
 - Os perfis normativos são definidos por breakpoints e conectados por interpolação log-log (lei de potência). Isso é somente a representação computacional entre pontos e não afirma que as normas aplicaram suavização.
 - O app mostra uma tabela compacta com o Grms do ensaio medido e o Grms integrado de cada perfil de referência na faixa selecionada.
+- A aba “Teste senoidal” gera um cronograma exploratório: divide a faixa em bandas logarítmicas, usa o centro de cada banda como frequência e distribui a duração total proporcionalmente à área da PSD medida naquela banda. A amplitude informada é fixa e não é convertida da PSD; portanto o cronograma não reproduz o perfil aleatório nem demonstra equivalência de dano.
 - Proximidade numérica não demonstra conformidade. A conformidade depende de requisitos completos da edição aplicável, configuração e procedimento de ensaio.
 
 ## Proveniência dos perfis
@@ -44,3 +45,5 @@ Os breakpoints embutidos são os transcritos na conversa do projeto a partir de 
 ## Limitações
 
 Este é um analisador de apoio ao TCC, não um instrumento certificado nem uma ferramenta de declaração de conformidade. Amostragem irregular, aliasing, orientação/montagem do sensor, calibração, faixa dinâmica e transientes podem afetar os resultados. A advertência de jitter aparece na interface quando a variação dos intervalos de amostragem excede 5%. Verifique que a frequência de Nyquist cobre a banda de interesse e que a aquisição não saturou.
+
+Uma equivalência de dano entre ensaio aleatório e senoidal exige um modelo de fadiga e resposta estrutural (por exemplo, FDS, amortecimento e resposta do produto); a PSD medida sozinha não define um cronograma equivalente. Ver Pahor Kos, Slavič e Boltežar (2015), [Fatigue Damage for Sweep-Sine and Random Accelerated Vibration Testing](https://doi.org/10.1155/2014/340545). O cronograma desta aplicação é uma distribuição exploratória de tempo ponderada pela energia observada.
