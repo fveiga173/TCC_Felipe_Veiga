@@ -28,6 +28,8 @@ time_s,ax,ay,az
 
 O app estima `Fs = 1/mediana(Δt)`. Se o firmware exportar tempo em milissegundos (`time_ms`), converta a coluna para segundos e nomeie-a `time_s` antes de importar.
 
+O firmware `MPU6050_SD_logger.ino` foi configurado para uma taxa-alvo de 500 amostras/s, adequada como referência para analisar até 50 Hz (10 amostras por ciclo). Ele não encerra ao atingir o limite de linhas do Excel: grava até ocorrer falha de leitura ou erro no cartão/alimentação. O tamanho final depende do cartão SD, do sistema de arquivos e da bateria. O Excel não abre todas as linhas de arquivos grandes; isso é um limite do Excel, não do CSV. O app lê o arquivo completo em memória, então arquivos muito grandes também podem exceder a memória disponível no computador.
+
 ## Método e interpretação
 
 - Remove-se a componente média do eixo selecionado.
@@ -36,8 +38,6 @@ O app estima `Fs = 1/mediana(Δt)`. Se o firmware exportar tempo em milissegundo
 - Os perfis normativos são definidos por breakpoints e conectados por interpolação log-log (lei de potência). Isso é somente a representação computacional entre pontos e não afirma que as normas aplicaram suavização.
 - O app mostra uma tabela compacta com o Grms do ensaio medido e o Grms integrado de cada perfil de referência na faixa selecionada.
 - Os limites mínimo e máximo da faixa controlam a integração do Grms e a comparação; a PSD completa permanece visível. Uma faixa de frequência define banda de análise, não identifica se a fonte foi o pavimento, motor ou transmissão.
-- A aba “Teste senoidal” usa como padrão curso de 25,4 mm pico a pico, permite editar o curso, limita a faixa inicialmente a 5–50 Hz e exige teste de pelo menos 5 s. Sob a hipótese de deslocamento vertical harmônico ideal, calcula o Grms teórico de cada frequência e redistribui os tempos para tentar igualar o Grms medido do veículo na mesma faixa. Se o alvo estiver fora do intervalo de Grms alcançável, não exporta um cronograma como se fosse equivalente.
-- O curso fixo e o modo rotativo/reciprocante de uma mesa não garantem movimento senoidal vertical ideal. Confirme o modelo/modo no manual e meça o Grms com acelerômetro na mesa carregada. ASTM D4169 separa a opção aleatória (D4728) da opção senoidal (D999 B/C); uma mesa rotary-reciprocating de curso fixo pode ser D999 A2, de choques repetitivos. A conversão teórica abaixo não é conformidade nem equivalência de dano.
 - Proximidade numérica não demonstra conformidade. A conformidade depende de requisitos completos da edição aplicável, configuração e procedimento de ensaio.
 
 ## Proveniência dos perfis
@@ -48,6 +48,5 @@ Os breakpoints embutidos são: ASTM D4728-06, Appendix X1, Table X1.1 (Truck); I
 
 Este é um analisador de apoio ao TCC, não um instrumento certificado nem uma ferramenta de declaração de conformidade. Amostragem irregular, aliasing, orientação/montagem do sensor, calibração, faixa dinâmica e transientes podem afetar os resultados. A advertência de jitter aparece na interface quando a variação dos intervalos de amostragem excede 5%. Verifique que a frequência de Nyquist cobre a banda de interesse e que a aquisição não saturou.
 
-Sob a hipótese de movimento senoidal, o Grms por frequência é calculado a partir do deslocamento pico a pico como `Grms = (2πf)² × (curso p-p / 2) / (√2 × g)`. A equivalência de dano entre ensaio aleatório e senoidal exige um modelo de fadiga e resposta estrutural (por exemplo, FDS, amortecimento e resposta do produto); a PSD medida sozinha não define um cronograma equivalente. ASTM D4728 declara que não há equivalência direta geral entre aleatório e senoidal. Ver Pahor Kos, Slavič e Boltežar (2015), [Fatigue Damage for Sweep-Sine and Random Accelerated Vibration Testing](https://doi.org/10.1155/2014/340545).
 
 O acelerômetro na carroceria registra a resposta total no local: a contribuição do pavimento pode coexistir com motor e transmissão. A literatura relaciona explicitamente vibração veicular à excitação do pavimento e do motor ([Du et al., 2020](https://doi.org/10.1080/10298436.2020.1830092)). Para atribuir componentes ao motor, é necessário RPM/tacômetro sincronizado; order tracking com várias referências de rotação e acelerômetros em pontos distintos foi estudado por [Blough (SAE, 2005)](https://doi.org/10.4271/2005-01-2265). Sem esses dados, o aplicativo reporta o resultado total medido e não filtra faixas presumidas como motor.
