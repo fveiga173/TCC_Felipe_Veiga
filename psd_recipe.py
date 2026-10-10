@@ -11,13 +11,21 @@ import json
 import zipfile
 import zlib
 from datetime import datetime, timezone
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.signal import welch, get_window
 
-VERSION = '3.0.0'
+VERSION = '3.1.0'
+
+
+def installed_version(package):
+    """Registra dependências instaladas e identifica as ausentes no ambiente."""
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return 'não instalado'
 
 
 def parse_metadata(text):
@@ -237,9 +245,9 @@ def export_bundle(result, context, status, reasons):
                              'Banda restrita; sem extrapolação ou correção da resposta do sensor.',
                              'Tempo depende da base de amostragem adotada.',
                              'Conferir capacidade da mesa, carga e configuração do controlador antes da execução.'],
-                software={k:version(k) for k in ['numpy','scipy','pandas','streamlit','plotly']},
+                software={k:installed_version(k) for k in ['numpy','scipy','pandas','streamlit','plotly']},
                 code_sha256={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                             for name in ['app.py','psd_recipe.py','recipe_ui.py']})
+                             for name in ['app.py','psd_recipe.py','recipe_ui.py','fixed_frequency.py','freq_recipe_ui.py']})
     duration=meta['duration_s']; fit=result['simplification']
     explanation = f'''# Memória de cálculo da receita PSD\n\nStatus: {status}\n\n## Prescrição proposta\n- Direção: eixo informado no contexto; vertical depende da montagem.\n- Banda: {meta['band_hz'][0]:.6g} a {meta['band_hz'][1]:.6g} Hz.\n- Grms de origem: {fit['input_grms']:.8g} g.\n- Grms do perfil: {fit['recipe_grms']:.8g} g.\n- Tempo no nível pleno: {duration:.6f} s ({duration/60:.6f} min).\n- Interpolação entre pontos: {fit['mode']}.\n- Subida gradual não incluída no tempo pleno.\n\n## Cálculo\n1. Welch por trecho, Hann periódica, média removida por janela e densidade unilateral.\n2. PSD representativa = soma(Tj × PSDj)/soma(Tj), em escala linear.\n3. Tj = amostras cobertas/fs; caudas excluídas constam em trechos.csv.\n4. Grms = raiz da integral de PSD na banda, em g²/Hz.\n5. Redução por maior erro espectral, seguida de preservação da área.\n6. Fator de ajuste numérico dos níveis: {fit['scale_factor']:.8g}.\n7. Maior erro na grade de avaliação: {fit['max_error_db']:.6g} dB.\n8. Critério de projeto: {fit['tolerance_db']:.6g} dB; atendido: {fit['passed']}.\n\nTempo de exposição preservado, sem compressão e sem equivalência de dano.\nO ajuste de área compensa a simplificação; não amplia o Grms de origem.\nA duração e a PSD representam somente os trechos cobertos nesta medição.\nO perfil médio não mantém a sequência temporal nem impactos individuais.\n\n## Pendências\n'''+ '\n'.join('- '+r for r in reasons or ['Proposta para revisão técnica; execução depende de verificação da mesa.'])+'''
 

@@ -1,10 +1,11 @@
-"""Análise de vibração de transporte — versão 3.0, 2026-10-10.
+"""Análise de vibração de transporte — versão 3.1, 2026-10-10.
 Executar: streamlit run app.py
 """
 import io
 import hashlib
 from psd_recipe import load_binary, parse_metadata
 from recipe_ui import render_recipe
+from freq_recipe_ui import render_fixed_recipe
 import json
 import numpy as np
 import pandas as pd
@@ -120,7 +121,7 @@ def demo_data():
 def main():
     st.set_page_config(page_title='Veiga | Análise de vibração',layout='wide')
     st.title('Análise de vibração de transporte')
-    st.caption('Caracterizar o percurso → definir duas receitas → verificar a execução · v3.0')
+    st.caption('Caracterizar o percurso → definir duas receitas → verificar a execução · v3.1')
     with st.sidebar:
         st.header('Dados')
         uploaded=st.file_uploader('CSV ou BIN do sensor',type=['csv','bin'])
@@ -210,7 +211,7 @@ def main():
     if uncertain:
         spectral_ok=st.checkbox('Calcular PSD exploratória supondo espaçamento uniforme pela mediana (não corrige a aquisição)',value=False)
     status='EXPLORATORIO — tempo irregular' if uncertain else 'TEMPO REGULAR NA TRIAGEM — banda do sensor ainda requer confirmação'
-    tabs=st.tabs(['Sinal e RMS','PSD e normas','Receita PSD','Diagnóstico temporal','Método e exportação'])
+    tabs=st.tabs(['Sinal e RMS','PSD e normas','Receita PSD','Receita senoidal','Diagnóstico temporal','Método e exportação'])
     with tabs[0]:
         fig=line_plot(t-t[0],x,'Sinal original e componente com média removida','Tempo no trecho (s)','Aceleração (g)')
         fig.data[0].name='Original';fig.data[0].showlegend=True
@@ -281,11 +282,13 @@ def main():
     with tabs[2]:
         render_recipe(t,x,d['fs_median'],metadata,uncertain,demo)
     with tabs[3]:
+        render_fixed_recipe(t,x,d['fs_median'],metadata,uncertain,demo)
+    with tabs[4]:
         dt=np.diff(t)*1000
         st.plotly_chart(line_plot(t[1:]-t[0],dt,'Intervalos entre registros','Tempo no trecho (s)','Δt (ms)'),width='stretch')
         st.caption('O diagnóstico superior considera o arquivo inteiro, mesmo após selecionar um trecho. Mediana e taxa média não substituem a verificação dos intervalos.')
-    with tabs[4]:
-        st.markdown('''**Escopo:** caracterizar o sinal, comparar referências e gerar proposta de receita PSD com duração da exposição coberta. A receita da mesa convencional permanece como etapa futura. Consulte a aba Receita PSD para critérios, cobertura e justificativas.
+    with tabs[5]:
+        st.markdown('''**Escopo:** caracterizar o sinal, comparar referências e gerar propostas de receita PSD e de frequência fixa com duração da exposição coberta. Consulte as abas de receita para critérios, cobertura e justificativas.
 
 **Tratamento:** preserva ordem e valores originais; converte unidade quando solicitado; remove a média para análise dinâmica. Não suaviza o sinal, remove picos ou reamostra automaticamente. Falhas de tempo bloqueiam a análise ou exigem modo exploratório explícito.
 
@@ -293,7 +296,9 @@ def main():
 
 **RMS:** o RMS temporal global, o RMS de intervalos com média local removida e o Grms integrado numa banda não são a mesma medida. Janelamento, trechos cobertos, remoção de média e banda precisam coincidir antes de exigir concordância. A integração da PSD experimental usa interpolação linear nos limites; perfis de referência usam integração de leis de potência entre breakpoints.
 
-**Fontes das curvas:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck / D4169 Assurance Level II); Table X1.3 (perfil reproduzido de ISO 13355). A segunda curva não confirma uma edição atual da ISO. ISTA 3E não foi incluída como referência independente porque sua transcrição ainda requer verificação documental. Consultar a edição adotada antes de afirmar conformidade.
+**Receita senoidal:** centro da banda completa de 1/3 de oitava com maior integral de PSD, ou frequência definida pelo pesquisador; intensidade pelo RMS da banda local (padrão) ou pelo Grms de toda a faixa. A aceleração de pico é √2 vezes o RMS e o deslocamento pico a pico é calculado pela relação cinemática da senoide. Essa discretização é um critério do estudo, não uma exigência da ISO 2247. A receita derivada do percurso é simplificada e não declara conformidade. A ISO 2247:2000 é referência contextual para ensaios de embalagens em baixa frequência; seus métodos e requisitos de corpo de prova não são satisfeitos automaticamente por igualar um nível RMS.
+
+**Fontes das curvas PSD:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck / D4169 Assurance Level II); Table X1.3 (perfil reproduzido de ISO 13355). A segunda curva não confirma uma edição atual da ISO. ISTA 3E não foi incluída como referência independente porque sua transcrição ainda requer verificação documental. Consultar a edição adotada antes de afirmar conformidade.
 
 **Software:** [SciPy — Welch](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html). Similaridade ou proximidade de Grms não demonstra conformidade e não estabelece equivalência de dano.
 

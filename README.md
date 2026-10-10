@@ -1,7 +1,7 @@
-# Análise de vibração de transporte — versão 3.0
+# Análise de vibração de transporte — versão 3.1
 
-Aplicativo Streamlit para caracterizar aceleração e elaborar uma proposta de
-receita para mesa de vibração com controle PSD. Código comentado em português.
+Aplicativo Streamlit para caracterizar aceleração e elaborar propostas de receita
+para mesa com controle PSD e para mesa de frequência fixa. Código comentado em português.
 
 ## Uso pelo Streamlit
 
@@ -22,7 +22,8 @@ própria, não envia comandos à mesa e não faz upload a serviços adicionais.
 2. Conferir qualidade, escala, base temporal e orientação do sensor.
 3. Examinar sinal bruto, componente sem média, RMS, PSD e referências.
 4. Abrir **Receita PSD**, selecionar trechos, banda e interpolação do controlador.
-5. Registrar justificativas, comparar o perfil proposto e exportar o pacote.
+5. Abrir **Receita senoidal**, escolher frequência e critério de aceleração.
+6. Registrar justificativas, conferir limites da mesa e exportar as memórias de cálculo.
 
 **Usar demonstração sintética** permite apresentar o procedimento sem medições
 reais. O resultado permanece identificado como DEMONSTRACAO.
@@ -49,7 +50,31 @@ reais. O resultado permanece identificado como DEMONSTRACAO.
 A banda inicial 3–50 Hz é uma escolha de estudo, não declaração de banda útil
 calibrada. Perfil médio não preserva ordem temporal, impactos individuais ou
 distribuição de amplitudes. As diferenças de Grms entre trechos ajudam a avaliar
-a necessidade de receitas em blocos. A receita da mesa convencional é etapa futura.
+a necessidade de receitas em blocos.
+
+## Receita para mesa de frequência fixa
+
+- Critério automático de frequência: centro da banda completa de 1/3 de oitava
+  com maior integral de PSD dentro da banda analisada. É uma regra de seleção
+  do aplicativo, não requisito de norma. Também é possível fixar manualmente a
+  frequência para atender à capacidade da mesa ou estudar uma ressonância.
+- Intensidade recomendada para a primeira proposta: RMS integrado na banda
+  local de 1/3 de oitava ao redor da frequência. Alternativa: concentrar o Grms
+  de toda a banda em uma senoide; essa concentração pode elevar o nível na
+  frequência escolhida e exige revisão da mesa e do conjunto ensaiado.
+- Conversão da senoide: aceleração de pico = √2 × aceleração RMS; deslocamento
+  pico a pico = 2 × aceleração de pico × g/(2πf)². O ZIP exporta os dois valores
+  de aceleração e o deslocamento requerido.
+- Duração = soma dos intervalos de amostras cobertas pela PSD dos trechos
+  selecionados. Partida excluída, sem multiplicador de intensidade e sem
+  compressão temporal.
+- Uma senoide única descarta o restante do espectro, a ordem dos eventos e a
+  distribuição temporal dos níveis. RMS igual não demonstra equivalência de
+  resposta, fadiga ou dano.
+- A ISO 2247:2000 é apresentada como referência contextual de vibração
+  senoidal de baixa frequência para embalagens. O cálculo do percurso não
+  declara conformidade: requisitos do corpo de prova, método, frequência,
+  deslocamento, montagem e procedimento não são verificados pelo aplicativo.
 
 ## Aquisição e estados
 
@@ -83,13 +108,16 @@ interpolação e limites no controlador.
 ## Organização e testes
 
 - `app.py`: interface e caracterização.
-- `psd_recipe.py`: núcleo científico, leitura binária e exportação.
-- `recipe_ui.py`: interface da prescrição e justificativas.
+- `psd_recipe.py`: núcleo científico, leitura binária e receita PSD.
+- `recipe_ui.py`: interface da receita PSD.
+- `fixed_frequency.py`: cálculos e exportação da receita senoidal.
+- `freq_recipe_ui.py`: interface da receita senoidal e justificativas.
 - `tests/`: verificações analíticas, integridade e fluxo Streamlit.
 
-Dez testes cobrem integrais conhecidas, RMS senoidal, ponderação temporal,
-cobertura, dados inválidos, simplificação, integridade binária, exportação e
-interface com AppTest. Execute no ambiente de desenvolvimento:
+Testes cobrem integrais conhecidas, RMS senoidal, seleção de banda, conversão
+para deslocamento, ponderação temporal, cobertura, dados inválidos,
+simplificação, integridade binária, exportação e interface com AppTest. Execute
+no ambiente de desenvolvimento:
 
 ```bash
 python -m unittest discover -s tests -v

@@ -1,17 +1,22 @@
 """Teste funcional da interface Streamlit usando o AppTest oficial."""
 from pathlib import Path
 import unittest
-from streamlit.testing.v1 import AppTest
+try:
+    from streamlit.testing.v1 import AppTest
+    STREAMLIT_AVAILABLE=True
+except ModuleNotFoundError:
+    STREAMLIT_AVAILABLE=False
 
 ROOT=Path(__file__).resolve().parents[1]
 
+@unittest.skipUnless(STREAMLIT_AVAILABLE,'Streamlit não está instalado neste ambiente.')
 class InterfaceTests(unittest.TestCase):
     def test_demo_and_invalid_band(self):
         at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
         self.assertFalse(at.exception)
         next(c for c in at.checkbox if c.label=='Usar demonstração sintética').check().run()
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.tabs),5)
+        self.assertEqual(len(at.tabs),6)
         self.assertTrue(any('DEMONSTRACAO' in i.value for i in at.info))
         at.number_input(key='recipe_low').set_value(60.).run()
         self.assertFalse(at.exception)
