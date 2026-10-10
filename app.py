@@ -1,7 +1,10 @@
-"""Análise de vibração de transporte — versão 2.0, 2026-10-07.
+"""Análise de vibração de transporte — versão 3.0, 2026-10-10.
 Executar: streamlit run app.py
 """
 import io
+import hashlib
+from psd_recipe import load_binary, parse_metadata
+from recipe_ui import render_recipe
 import json
 import numpy as np
 import pandas as pd
@@ -22,6 +25,7 @@ def read_csv(data):
 def number_series(s):
     return pd.to_numeric(s.astype(str).str.replace(',', '.', regex=False), errors='coerce').to_numpy(float)
 
+# 1. Diagnóstico: examinar tempos sem ordenar, eliminar ou inventar amostras.
 def diagnose(t, x):
     finite = np.isfinite(t) & np.isfinite(x)
     tf = t[np.isfinite(t)]
@@ -54,6 +58,8 @@ def integrate_band(f, p, low, high, loglog=False):
     vals = np.interp(grid, f, p)
     return float(np.trapezoid(vals, grid))
 
+# 2. Estimativa espectral para inspeção e comparação normativa.
+# A receita usa nperseg fixo entre trechos no módulo psd_recipe.py.
 def spectrum(x, fs, seconds, overlap):
     n = min(len(x), max(16, round(seconds*fs)))
     ov = min(n-1, round(n*overlap))
@@ -72,17 +78,31 @@ def rms_blocks(t, x, seconds):
     rows=[]
     edges=np.r_[np.arange(t[0],t[-1],seconds), t[-1]]
     for left,right in zip(edges[:-1],edges[1:]):
-        inside=(t>left)&(t<right)
-        tt=np.r_[left,t[inside],right]
-        xx=np.r_[np.interp(left,t,x),x[inside],np.interp(right,t,x)]
+        # Busca de limites evita percorrer todo o registro em cada janela.
+        # Isso mantém o mesmo cálculo em coletas de uma hora ou mais.
+        i=np.searchsorted(t,left,side='right');j=np.searchsorted(t,right,side='left')
+        tt=np.r_[left,t[i:j],right]
+        xx=np.r_[np.interp(left,t,x),x[i:j],np.interp(right,t,x)]
         dur=right-left
         mean=np.trapezoid(xx,tt)/dur
         rms=np.sqrt(np.trapezoid((xx-mean)**2,tt)/dur)
-        rows.append([left-t[0],right-t[0],dur,mean,rms,int(((t>=left)&(t<right)).sum())])
+        rows.append([left-t[0],right-t[0],dur,mean,rms,int(np.searchsorted(t,right,side='left')-np.searchsorted(t,left,side='left'))])
     return pd.DataFrame(rows,columns=['inicio_s','fim_s','duracao_s','media_g','rms_dinamico_g','amostras'])
 
+def display_indices(y, limit=20000):
+    """Reduz somente o desenho, preservando mínimo/máximo por bloco.
+    PSD, RMS e exportações continuam usando todas as amostras.
+    """
+    y=np.asarray(y)
+    if len(y)<=limit:return np.arange(len(y))
+    size=int(np.ceil(len(y)/(limit//2)))
+    count=len(y)//size;blocks=y[:count*size].reshape(count,size)
+    starts=np.arange(count)*size
+    return np.unique(np.r_[0,starts+blocks.argmin(axis=1),starts+blocks.argmax(axis=1),np.arange(count*size,len(y))])
+
 def line_plot(x,y,title,xlabel,ylabel):
-    fig=go.Figure(go.Scattergl(x=x,y=y,mode='lines'))
+    idx=display_indices(y)
+    fig=go.Figure(go.Scattergl(x=np.asarray(x)[idx],y=np.asarray(y)[idx],mode='lines'))
     fig.update_layout(title=title,xaxis_title=xlabel,yaxis_title=ylabel,height=360)
     return fig
 
@@ -96,28 +116,53 @@ def demo_data():
     z=1+amplitude*np.sin(2*np.pi*8*t)+.07*np.sin(2*np.pi*35*t)+rng.normal(0,.015,len(t))
     return pd.DataFrame({'time_s':t,'accel_z_g':z})
 
+# 3. Interface: origem → qualidade → análise → prescrição documentada.
 def main():
     st.set_page_config(page_title='Veiga | Análise de vibração',layout='wide')
     st.title('Análise de vibração de transporte')
-    st.caption('Caracterizar o percurso → definir duas receitas → verificar a execução · v2.0')
+    st.caption('Caracterizar o percurso → definir duas receitas → verificar a execução · v3.0')
     with st.sidebar:
         st.header('Dados')
-        uploaded=st.file_uploader('CSV do sensor',type=['csv','txt'])
+        uploaded=st.file_uploader('CSV ou BIN do sensor',type=['csv','bin'])
+        report_file=st.file_uploader('TXT do diagnóstico (obrigatório com BIN)',type=['txt'])
         demo=st.checkbox('Usar demonstração sintética',value=False)
         source=st.selectbox('Contexto da aquisição',['Teste manual / funcional','Transporte em veículo','Mesa vibratória','Outro'])
         unit=st.selectbox('Unidade da aceleração',['g','m/s²'])
         fullscale=st.selectbox('Faixa configurada no sensor (em g)',['Não confirmada',2,4,8,16])
         st.caption('Confirme a faixa e os filtros no Arduino. Não deduzimos a configuração apenas do CSV.')
+    firmware={}
+    input_hash=''
+    binary_mode=bool(uploaded and uploaded.name.lower().endswith('.bin') and not demo)
     if demo:
         df=demo_data(); filename='demonstracao_sintetica.csv'
+        input_hash=hashlib.sha256(df.to_csv(index=False).encode()).hexdigest()
         st.info('Demonstração sintética de 30 s a 500 Hz: componentes de 8 e 35 Hz e mudança de intensidade aos 15 s. Não representa transporte.')
     elif uploaded:
-        try: df=read_csv(uploaded.getvalue())
-        except Exception as exc: st.error(f'Falha ao ler CSV: {exc}');return
+        raw=uploaded.getvalue();input_hash=hashlib.sha256(raw).hexdigest()
+        try:
+            if binary_mode:
+                if not report_file: st.info('Envie o TXT correspondente ao BIN.');return
+                df,firmware=load_binary(raw,report_file.getvalue())
+                unit='g';fullscale=4
+            else:
+                df=read_csv(raw)
+                firmware=parse_metadata('\n'.join(line for line in raw.decode('utf-8-sig').splitlines() if line.strip().startswith('#')))
+        except Exception as exc: st.error(f'Falha ao ler aquisição: {exc}');return
         filename=uploaded.name
     else:
         st.info('Envie o CSV ou ative a demonstração sintética. Esperado: time_s e pelo menos um eixo de aceleração.')
         return
+    nominal=binary_mode or firmware.get('time_basis')=='sample_index_nominal'
+    if nominal:
+        time_basis='Índice nominal / FIFO'
+        st.warning('Tempo nominal por índice: regularidade do CSV não comprova regularidade do sensor. A PSD e a duração usam a taxa do eixo nominal; não há correção automática pelo relógio do Arduino.')
+    elif demo:
+        time_basis='Sintética conhecida'
+    else:
+        time_basis=st.selectbox('Origem do eixo temporal',['Não identificada','Tempos medidos pelo Arduino','Índice nominal / FIFO'])
+    if binary_mode:
+        st.success('BIN + TXT consistentes: estado final OK, sem erro/transbordamento, quantidade e CRC32 conferidos.')
+        st.caption(f'Taxa estimada vs. relógio Arduino: {firmware["rate_vs_arduino_hz"]:.6f} Hz. Não é taxa calibrada. BIN já convertido usando 8192 contagens/g e escala ±4 g.')
     if 'time_s' not in df or len(df)<16:
         st.error('São necessárias a coluna time_s em segundos e pelo menos 16 linhas.');return
     columns=[c for c in df if c!='time_s']
@@ -165,26 +210,30 @@ def main():
     if uncertain:
         spectral_ok=st.checkbox('Calcular PSD exploratória supondo espaçamento uniforme pela mediana (não corrige a aquisição)',value=False)
     status='EXPLORATORIO — tempo irregular' if uncertain else 'TEMPO REGULAR NA TRIAGEM — banda do sensor ainda requer confirmação'
-    tabs=st.tabs(['Sinal e RMS','PSD e normas','Diagnóstico temporal','Método e exportação'])
+    tabs=st.tabs(['Sinal e RMS','PSD e normas','Receita PSD','Diagnóstico temporal','Método e exportação'])
     with tabs[0]:
         fig=line_plot(t-t[0],x,'Sinal original e componente com média removida','Tempo no trecho (s)','Aceleração (g)')
         fig.data[0].name='Original';fig.data[0].showlegend=True
-        fig.add_trace(go.Scattergl(x=t-t[0],y=z,name='Média removida',mode='lines'))
-        st.plotly_chart(fig,use_container_width=True)
+        idx=display_indices(z)
+        fig.add_trace(go.Scattergl(x=(t-t[0])[idx],y=z[idx],name='Média removida',mode='lines'))
+        st.caption('Em séries longas, os gráficos temporais mostram mínimos e máximos por bloco para manter a navegação fluida. Cálculos e exportações usam todas as amostras.')
+        st.plotly_chart(fig,width='stretch')
         r=rms_blocks(t,x,rms_s)
         duration=t[-1]-t[0]
         weighted_mean=float(np.trapezoid(x,t)/duration)
         rms_t=float(np.sqrt(np.trapezoid((x-weighted_mean)**2,t)/duration))
         a,b,c=st.columns(3);a.metric('Média das amostras',f'{dc:.4f} g');b.metric('RMS das amostras (média removida)',f'{np.std(x):.4f} g');c.metric('RMS ponderado pelo tempo',f'{rms_t:.4f} g')
         st.caption('RMS temporal em toda a banda registrada, sem restrição à banda normativa. A ponderação usa integração trapezoidal nos tempos reais; não recupera dados ausentes.')
-        st.plotly_chart(line_plot((r.inicio_s+r.fim_s)/2,r.rms_dinamico_g,'RMS dinâmico por intervalo','Tempo no trecho (s)','RMS (g)'),use_container_width=True)
+        st.plotly_chart(line_plot((r.inicio_s+r.fim_s)/2,r.rms_dinamico_g,'RMS dinâmico por intervalo','Tempo no trecho (s)','RMS (g)'),width='stretch')
         counts,edges=np.histogram(r.rms_dinamico_g,bins=10,weights=r.duracao_s)
         dist=pd.DataFrame({'rms_min_g':edges[:-1],'rms_max_g':edges[1:],'tempo_s':counts,'tempo_percentual':100*counts/counts.sum()})
-        st.plotly_chart(go.Figure(go.Bar(x=(edges[:-1]+edges[1:])/2,y=dist.tempo_percentual)).update_layout(title='Distribuição do tempo entre níveis de RMS',xaxis_title='RMS por intervalo (g)',yaxis_title='Tempo (%)'),use_container_width=True)
+        st.plotly_chart(go.Figure(go.Bar(x=(edges[:-1]+edges[1:])/2,y=dist.tempo_percentual)).update_layout(title='Distribuição do tempo entre níveis de RMS',xaxis_title='RMS por intervalo (g)',yaxis_title='Tempo (%)'),width='stretch')
         st.caption('Cada intervalo tem sua própria média removida. A distribuição depende da duração escolhida; o último intervalo parcial é ponderado pela duração efetiva.')
         csv_download('Baixar RMS por intervalo',r,'rms_por_intervalo.csv')
         csv_download('Baixar distribuição de níveis',dist,'distribuicao_rms.csv')
-    metadata=dict(version='2.0',file=filename,context=source,axis=axis,unit_input=unit,fullscale_g=fullscale,diagnostic=d,status=status,start_s=start,end_s=end,rms_interval_s=rms_s,possible_saturation_count=hits if fullscale!='Não confirmada' else guessed_hits,acquisition_validated=False)
+    metadata=dict(version='3.0',file=filename,context=source,axis=axis,unit_input=unit,fullscale_g=fullscale,diagnostic=d,status=status,start_s=start,end_s=end,rms_interval_s=rms_s,possible_saturation_count=hits if fullscale!='Não confirmada' else guessed_hits,acquisition_validated=False)
+    metadata.update(sha256_input=input_hash,firmware=firmware,time_basis=time_basis,requested_welch_seconds=seg,requested_overlap=overlap)
+    metadata['possible_saturation_count']=max(metadata['possible_saturation_count'],int(firmware.get('saturation_samples',0)),int(firmware.get('rail_samples_recomputed',0)))
     with tabs[1]:
         if not spectral_ok:
             st.info('PSD bloqueada pela irregularidade temporal. Use o sinal temporal e o diagnóstico para investigar a aquisição. A opção exploratória está acima.')
@@ -200,7 +249,7 @@ def main():
             for name,(ff,pp,_) in PROFILES.items():fig.add_trace(go.Scatter(x=ff,y=pp,name=name,mode='lines+markers',line={'dash':'dash'}))
             fig.update_layout(title='PSD experimental e referências',xaxis={'type':'log','title':'Frequência (Hz)'},yaxis={'type':'log','title':'PSD (g²/Hz)'},height=520,legend={'orientation':'h'})
             if high>low:fig.add_vrect(x0=low,x1=high,fillcolor='lightblue',opacity=.12,line_width=0)
-            st.plotly_chart(fig,use_container_width=True)
+            st.plotly_chart(fig,width='stretch')
             common_low=max(low,3.);common_high=min(high,200.,f[-1])
             if common_high<=common_low:
                 st.warning('Não há banda comum válida para comparar todas as referências.')
@@ -227,14 +276,16 @@ def main():
             with st.expander('FFT de amplitude para inspeção'):
                 win=np.hanning(len(z));amp=np.abs(np.fft.rfft(z*win))/win.sum();amp[1:]*=2
                 if len(z)%2==0:amp[-1]/=2
-                st.plotly_chart(line_plot(np.fft.rfftfreq(len(z),1/fs)[1:],amp[1:],'FFT com janela Hann','Frequência (Hz)','Amplitude aproximada (g)'),use_container_width=True)
+                st.plotly_chart(line_plot(np.fft.rfftfreq(len(z),1/fs)[1:],amp[1:],'FFT com janela Hann','Frequência (Hz)','Amplitude aproximada (g)'),width='stretch')
                 st.caption('Ferramenta de inspeção de componentes. A amplitude de picos depende do alinhamento espectral; a caracterização aleatória usa PSD.')
     with tabs[2]:
-        dt=np.diff(t)*1000
-        st.plotly_chart(line_plot(t[1:]-t[0],dt,'Intervalos entre registros','Tempo no trecho (s)','Δt (ms)'),use_container_width=True)
-        st.caption('O diagnóstico superior considera o arquivo inteiro, mesmo após selecionar um trecho. Mediana e taxa média não substituem a verificação dos intervalos.')
+        render_recipe(t,x,d['fs_median'],metadata,uncertain,demo)
     with tabs[3]:
-        st.markdown('''**Escopo:** caracterizar o sinal e comparar referências. Esta versão não calcula duração equivalente de ensaio nem receita simplificada da mesa convencional.
+        dt=np.diff(t)*1000
+        st.plotly_chart(line_plot(t[1:]-t[0],dt,'Intervalos entre registros','Tempo no trecho (s)','Δt (ms)'),width='stretch')
+        st.caption('O diagnóstico superior considera o arquivo inteiro, mesmo após selecionar um trecho. Mediana e taxa média não substituem a verificação dos intervalos.')
+    with tabs[4]:
+        st.markdown('''**Escopo:** caracterizar o sinal, comparar referências e gerar proposta de receita PSD com duração da exposição coberta. A receita da mesa convencional permanece como etapa futura. Consulte a aba Receita PSD para critérios, cobertura e justificativas.
 
 **Tratamento:** preserva ordem e valores originais; converte unidade quando solicitado; remove a média para análise dinâmica. Não suaviza o sinal, remove picos ou reamostra automaticamente. Falhas de tempo bloqueiam a análise ou exigem modo exploratório explícito.
 

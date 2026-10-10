@@ -1,5 +1,7 @@
+# Intervalos permitem ao Streamlit resolver versões para seu Python instalado.
+# As versões efetivas são registradas em cada receita exportada.
 numpy>=2.0,<3
 pandas>=2.2,<3
 scipy>=1.13,<2
 plotly>=5.24,<7
-streamlit>=1.40,<2
+streamlit>=1.50,<2
