@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import welch, get_window
 
-VERSION = '3.1.0'
+VERSION = '3.2.0'
 
 
 def installed_version(package):

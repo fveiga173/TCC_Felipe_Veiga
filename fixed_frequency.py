@@ -113,7 +113,7 @@ Referência: ISO. ISO 2247:2000. Packaging — Complete, filled transport packag
 
 Esta é uma proposta experimental simplificada. Não é declaração de conformidade com ISO 2247 nem equivalência à vibração rodoviária.
 '''
-    meta=dict(version='3.1.0',status=status,settings=s,context=context,reasons=reasons,
+    meta=dict(version='3.2.0',status=status,settings=s,context=context,reasons=reasons,
               limitations=['Excitação de frequência única substitui conteúdo multibanda.',
                            'RMS igual não demonstra equivalência de dano.',
                            'O deslocamento calculado deve caber na mesa e ser conferido com a norma aplicável.',

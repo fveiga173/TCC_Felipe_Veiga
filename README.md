@@ -1,4 +1,4 @@
-# Análise de vibração de transporte — versão 3.1
+# Análise de vibração de transporte — versão 3.2
 
 Aplicativo Streamlit para caracterizar aceleração e elaborar propostas de receita
 para mesa com controle PSD e para mesa de frequência fixa. Código comentado em português.
@@ -16,14 +16,17 @@ repositório. Os uploads do sensor são processados pela aplicação; não são
 adicionados ao GitHub. O aplicativo não grava medições em disco por iniciativa
 própria, não envia comandos à mesa e não faz upload a serviços adicionais.
 
-## Fluxo de análise
+## Fluxo do aplicativo
 
-1. Carregar CSV ou BIN + TXT do firmware v4 e informar o contexto da aquisição.
-2. Conferir qualidade, escala, base temporal e orientação do sensor.
-3. Examinar sinal bruto, componente sem média, RMS, PSD e referências.
-4. Abrir **Receita PSD**, selecionar trechos, banda e interpolação do controlador.
-5. Abrir **Receita senoidal**, escolher frequência e critério de aceleração.
-6. Registrar justificativas, conferir limites da mesa e exportar as memórias de cálculo.
+1. **Caracterizar percurso:** carregar a medição e verificar qualidade, RMS,
+   distribuição temporal dos níveis, PSD e comparação com as referências.
+2. **Definir receitas:** gerar uma proposta PSD e uma proposta senoidal a partir
+   dos trechos e critérios selecionados.
+3. **Gerar guia:** exportar parâmetros, justificativas e memória de cálculo.
+
+Os detalhes de aquisição, interpolação e simplificação permanecem disponíveis
+em controles recolhidos e nos arquivos exportados. O fluxo principal destaca os
+resultados que compõem o guia prático.
 
 **Usar demonstração sintética** permite apresentar o procedimento sem medições
 reais. O resultado permanece identificado como DEMONSTRACAO.
@@ -76,6 +79,13 @@ a necessidade de receitas em blocos.
   declara conformidade: requisitos do corpo de prova, método, frequência,
   deslocamento, montagem e procedimento não são verificados pelo aplicativo.
 
+## Limite do trabalho
+
+O aplicativo define e documenta parâmetros de ensaio com base em medições e
+referências. Não executa comandos na mesa, não faz ensaio físico de paletes,
+não avalia dano em produtos e não declara equivalência entre equipamentos.
+Essa delimitação mantém o produto final como guia prático reproduzível.
+
 ## Aquisição e estados
 
 BIN + TXT: verifica último status, erros, transbordamentos, tamanho e CRC32.
@@ -107,7 +117,7 @@ interpolação e limites no controlador.
 
 ## Organização e testes
 
-- `app.py`: interface e caracterização.
+- `app.py`: fluxo em três etapas e caracterização.
 - `psd_recipe.py`: núcleo científico, leitura binária e receita PSD.
 - `recipe_ui.py`: interface da receita PSD.
 - `fixed_frequency.py`: cálculos e exportação da receita senoidal.
