@@ -56,7 +56,7 @@ def render_fixed_recipe(t, x, fs, metadata, uncertain, demo):
 
     try:
         result=build_fixed_frequency(rel,x,fs,intervals.to_dict('records'),float(low),float(high),freq_mode,
-            manual_frequency,intensity_mode,metadata['requested_welch_seconds'],metadata['requested_overlap'])
+            manual_frequency,intensity_mode,metadata['requested_welch_seconds'],metadata['requested_overlap'],metadata.get('requested_window','hann'))
     except (ValueError,TypeError,KeyError,OverflowError) as exc:
         st.error(f'Não foi possível calcular a receita: {exc}');return
 
@@ -103,3 +103,4 @@ def render_fixed_recipe(t, x, fs, metadata, uncertain, demo):
     st.caption('ZIP com parâmetros propostos, PSD usada, energia por banda, trechos cobertos, JSON e memória de cálculo.')
     with st.expander('Parâmetros completos da receita'):
         st.json(report)
+

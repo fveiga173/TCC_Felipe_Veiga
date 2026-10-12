@@ -10,7 +10,7 @@ import math
 import zipfile
 import numpy as np
 import pandas as pd
-from psd_recipe import representative_psd, spectral_area, cut_band
+from psd_recipe import representative_psd, spectral_area, cut_band, VERSION
 
 
 def third_octave_bands(low, high):
@@ -30,7 +30,7 @@ def third_octave_bands(low, high):
 
 def build_fixed_frequency(t, x, fs, intervals, band_low, band_high,
                           freq_mode, selected_frequency=None, intensity_mode='third_octave',
-                          welch_seconds=4., overlap=.5):
+                          welch_seconds=4., overlap=.5, window='hann'):
     """Reduz a excitação medida a uma senoide e conserva o tempo coberto.
 
     A frequência automática é o centro de 1/3 de oitava que contém mais
@@ -39,7 +39,7 @@ def build_fixed_frequency(t, x, fs, intervals, band_low, band_high,
     A intensidade pode reproduzir o RMS local da banda ou o Grms de toda a
     faixa. A segunda opção concentra toda a energia na frequência selecionada.
     """
-    f,p,covered,settings,_=representative_psd(t,x,fs,intervals,welch_seconds,overlap)
+    f,p,covered,settings,_=representative_psd(t,x,fs,intervals,welch_seconds,overlap,window)
     f_band,p_band=cut_band(f,p,float(band_low),float(band_high))
     area_total=spectral_area(f_band,p_band)
     if area_total<=0:raise ValueError('PSD sem energia positiva na banda selecionada.')
@@ -113,7 +113,7 @@ Referência: ISO. ISO 2247:2000. Packaging — Complete, filled transport packag
 
 Esta é uma proposta experimental simplificada. Não é declaração de conformidade com ISO 2247 nem equivalência à vibração rodoviária.
 '''
-    meta=dict(version='3.2.0',status=status,settings=s,context=context,reasons=reasons,
+    meta=dict(version=VERSION,status=status,settings=s,context=context,reasons=reasons,
               limitations=['Excitação de frequência única substitui conteúdo multibanda.',
                            'RMS igual não demonstra equivalência de dano.',
                            'O deslocamento calculado deve caber na mesa e ser conferido com a norma aplicável.',
@@ -131,3 +131,4 @@ Esta é uma proposta experimental simplificada. Não é declaração de conformi
         z.writestr('receita.json',json.dumps(meta,ensure_ascii=False,indent=2,allow_nan=False))
         z.writestr('memoria_calculo.md',explanation)
     return mem.getvalue(),meta
+

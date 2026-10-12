@@ -1,7 +1,7 @@
 """Núcleo científico da receita PSD, independente do Streamlit.
 
 Convenções: aceleração em g, PSD unilateral em g²/Hz, tempo em s.
-Nenhuma função infere equivalência de dano nem acelera a exposição.
+Este módulo conserva a exposição; cenários opcionais ficam em vibration_scenarios.py.
 As tolerâncias da simplificação são critérios de projeto, não normativos.
 """
 from __future__ import annotations
@@ -10,14 +10,16 @@ import io
 import json
 import zipfile
 import zlib
+import re
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.signal import welch, get_window
+from references import REFERENCES, references_markdown
 
-VERSION = '3.2.0'
+VERSION = '4.0.0'
 
 
 def installed_version(package):
@@ -32,6 +34,8 @@ def parse_metadata(text):
     """Aceita TXT ou comentários do conversor. O último status prevalece."""
     result = {}
     for line in text.splitlines():
+        # Aceita também relatórios copiados do monitor serial do Arduino.
+        line = re.sub(r'^\s*\d{2}:\d{2}:\d{2}\.\d+\s*->\s*', '', line)
         line = line.strip().lstrip('#').strip()
         if '=' in line:
             key, value = line.split('=', 1)
@@ -48,16 +52,22 @@ def load_binary(binary, report):
     m = parse_metadata(report.decode('utf-8-sig'))
     required = ['status', 'format', 'time_basis', 'error_code', 'fifo_overflows',
                 'samples', 'sample_rate_nominal_hz', 'lsb_per_g', 'crc32',
-                'dlpf_cfg', 'accel_range_g', 'duration_arduino_ms', 'saturation_samples']
+                'accel_range_g', 'duration_arduino_ms', 'saturation_samples']
     if any(k not in m for k in required):
-        raise ValueError('TXT incompleto: faltam campos do diagnóstico v4.')
+        raise ValueError('TXT incompleto: faltam campos de integridade e aquisição.')
     if m['status'] != 'OK' or m['format'] != 'MPUZ_RAW_LE_V1' or m['time_basis'] != 'sample_index_nominal':
         raise ValueError('Formato desconhecido ou coleta não encerrada com OK.')
     if int(m['error_code']) != 0 or int(m['fifo_overflows']) != 0:
         raise ValueError('O TXT informa falha ou transbordamento. Não gerar receita.')
     n, fs, scale = int(m['samples']), float(m['sample_rate_nominal_hz']), float(m['lsb_per_g'])
-    if n < 16 or fs != 500 or scale != 8192 or int(m['dlpf_cfg']) != 2 or int(m['accel_range_g']) != 4:
-        raise ValueError('Configuração diferente do firmware v4 verificado (500 Hz, ±4 g, DLPF 2).')
+    legacy = fs == 500 and m.get('dlpf_cfg') == '2' and m.get('who_am_i') in (None, '104', '0x68')
+    v6 = (fs == 1000 and m.get('who_am_i') in ('112', '0x70')
+          and m.get('sample_rate_divider') == '0' and m.get('gyro_dlpf_cfg') == '1'
+          and m.get('accel_dlpf_cfg') == '0' and m.get('gyro_fchoice_b') == '0')
+    if n < 16 or scale != 8192 or int(m['accel_range_g']) != 4 or not (legacy or v6):
+        raise ValueError('Configuração não suportada: use v4 MPU-6050 500 Hz/DLPF 2 ou '
+                         'v6 MPU-6500 1000 Hz/accel DLPF 0/gyro DLPF 1/divider 0, ±4 g.')
+    m['acquisition_profile'] = 'MPU-6500 v6 / 1000 Hz' if v6 else 'MPU-6050 v4 / 500 Hz (legado)'
     if len(binary) != 2*n or zlib.crc32(binary) != int(m['crc32']):
         raise ValueError('BIN e TXT divergentes: quantidade de bytes ou CRC32 incorreto.')
     if float(m['duration_arduino_ms']) <= 0 or int(m['saturation_samples']) < 0:
@@ -109,7 +119,7 @@ def cut_band(f, p, low, high):
     return grid, np.interp(grid, f, p)
 
 
-def representative_psd(t, x, fs, intervals, seconds=4., overlap=.5):
+def representative_psd(t, x, fs, intervals, seconds=4., overlap=.5, window='hann'):
     """Welch por trecho; média linear das PSDs ponderada pela duração coberta.
 
     Trechos são [início,fim): uma amostra de fronteira não entra duas vezes.
@@ -129,6 +139,9 @@ def representative_psd(t, x, fs, intervals, seconds=4., overlap=.5):
     if abs(1/np.median(dt)/fs - 1) > .01:
         raise ValueError('Taxa informada incompatível com o eixo temporal.')
     nper = max(16, round(fs*seconds))
+    if window not in ('hann', 'hamming'):
+        raise ValueError('Janela inválida: selecione Hann ou Hamming.')
+    w = get_window(window, nper, fftbins=True)
     nov = min(nper-1, round(nper*overlap)); step = nper-nov
     rows, spectra, weights = [], [], []
     last_end = -np.inf
@@ -149,7 +162,7 @@ def representative_psd(t, x, fs, intervals, seconds=4., overlap=.5):
         windows = 1+(len(selected)-nper)//step
         covered = nper+(windows-1)*step
         # Hann periódica explícita evita depender do padrão de versões SciPy.
-        f, psd = welch(selected[:covered], fs=fs, window=get_window('hann', nper, fftbins=True),
+        f, psd = welch(selected[:covered], fs=fs, window=w,
                        nperseg=nper, noverlap=nov, detrend='constant',
                        scaling='density', return_onesided=True, average='mean')
         duration = covered/fs
@@ -160,9 +173,9 @@ def representative_psd(t, x, fs, intervals, seconds=4., overlap=.5):
                          tempo_representado_s=duration, cauda_excluida_s=(len(selected)-covered)/fs,
                          janelas_welch=int(windows)))
     averaged = np.average(np.stack(spectra), axis=0, weights=weights)
-    settings = dict(fs_hz=float(fs), nperseg=nper, noverlap=nov, window='Hann periódica',
+    settings = dict(fs_hz=float(fs), nperseg=nper, noverlap=nov, window=window.title()+' periódica', window_key=window,
                     detrend='constant', scaling='density', average='mean',
-                    bin_spacing_hz=fs/nper, enbw_hz=1.5*fs/nper,
+                    bin_spacing_hz=fs/nper, enbw_hz=float(fs*np.sum(w*w)/np.sum(w)**2),
                     duration_s=float(sum(weights)), weighting='tempo coberto por trecho',
                     duration_basis='soma de N_coberto/fs; sem dupla contagem de sobreposição')
     return f, averaged, pd.DataFrame(rows), settings, spectra
@@ -211,8 +224,8 @@ def simplify_psd(f, p, mode='log-log', tolerance_db=1., max_points=80):
 
 
 def build_recipe(t, x, fs, intervals, low, high, seconds=4., overlap=.5,
-                 mode='log-log', tolerance_db=1., max_points=80):
-    f, p, rows, settings, spectra = representative_psd(t, x, fs, intervals, seconds, overlap)
+                 mode='log-log', tolerance_db=1., max_points=80, window='hann'):
+    f, p, rows, settings, spectra = representative_psd(t, x, fs, intervals, seconds, overlap, window)
     band_f, band_p = cut_band(f, p, low, high)
     ff, pp, fit = simplify_psd(band_f, band_p, mode, tolerance_db, max_points)
     rows['grms_banda_g'] = [np.sqrt(spectral_area(*cut_band(f,s,low,high))) for s in spectra]
@@ -237,7 +250,7 @@ def export_bundle(result, context, status, reasons):
     as linhas do CSV para não perder a identificação de estudo/demonstração.
     """
     meta = dict(version=VERSION, created_utc=datetime.now(timezone.utc).isoformat(),
-                status=status, reasons=reasons, context=context, settings=result['settings'],
+                status=status, references=REFERENCES, reasons=reasons, context=context, settings=result['settings'],
                 simplification=result['simplification'], band_hz=[float(result['frequency'][0]),float(result['frequency'][-1])],
                 duration_s=result['settings']['duration_s'], intensity_multiplier=1., time_compression_factor=1.,
                 damage_equivalence_claimed=False, machine_authorization=False,
@@ -247,9 +260,9 @@ def export_bundle(result, context, status, reasons):
                              'Conferir capacidade da mesa, carga e configuração do controlador antes da execução.'],
                 software={k:installed_version(k) for k in ['numpy','scipy','pandas','streamlit','plotly']},
                 code_sha256={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                             for name in ['app.py','psd_recipe.py','recipe_ui.py','fixed_frequency.py','freq_recipe_ui.py']})
+                             for name in ['app.py','psd_recipe.py','recipe_ui.py','fixed_frequency.py','freq_recipe_ui.py','vibration_scenarios.py','scenario_ui.py','references.py']})
     duration=meta['duration_s']; fit=result['simplification']
-    explanation = f'''# Memória de cálculo da receita PSD\n\nStatus: {status}\n\n## Prescrição proposta\n- Direção: eixo informado no contexto; vertical depende da montagem.\n- Banda: {meta['band_hz'][0]:.6g} a {meta['band_hz'][1]:.6g} Hz.\n- Grms de origem: {fit['input_grms']:.8g} g.\n- Grms do perfil: {fit['recipe_grms']:.8g} g.\n- Tempo no nível pleno: {duration:.6f} s ({duration/60:.6f} min).\n- Interpolação entre pontos: {fit['mode']}.\n- Subida gradual não incluída no tempo pleno.\n\n## Cálculo\n1. Welch por trecho, Hann periódica, média removida por janela e densidade unilateral.\n2. PSD representativa = soma(Tj × PSDj)/soma(Tj), em escala linear.\n3. Tj = amostras cobertas/fs; caudas excluídas constam em trechos.csv.\n4. Grms = raiz da integral de PSD na banda, em g²/Hz.\n5. Redução por maior erro espectral, seguida de preservação da área.\n6. Fator de ajuste numérico dos níveis: {fit['scale_factor']:.8g}.\n7. Maior erro na grade de avaliação: {fit['max_error_db']:.6g} dB.\n8. Critério de projeto: {fit['tolerance_db']:.6g} dB; atendido: {fit['passed']}.\n\nTempo de exposição preservado, sem compressão e sem equivalência de dano.\nO ajuste de área compensa a simplificação; não amplia o Grms de origem.\nA duração e a PSD representam somente os trechos cobertos nesta medição.\nO perfil médio não mantém a sequência temporal nem impactos individuais.\n\n## Pendências\n'''+ '\n'.join('- '+r for r in reasons or ['Proposta para revisão técnica; execução depende de verificação da mesa.'])+'''
+    explanation = f'''# Memória de cálculo da receita PSD\n\nStatus: {status}\n\n## Prescrição proposta\n- Direção: eixo informado no contexto; vertical depende da montagem.\n- Banda: {meta['band_hz'][0]:.6g} a {meta['band_hz'][1]:.6g} Hz.\n- Grms de origem: {fit['input_grms']:.8g} g.\n- Grms do perfil: {fit['recipe_grms']:.8g} g.\n- Tempo no nível pleno: {duration:.6f} s ({duration/60:.6f} min).\n- Interpolação entre pontos: {fit['mode']}.\n- Subida gradual não incluída no tempo pleno.\n\n## Cálculo\n1. Welch por trecho, {result['settings']['window']}, média removida por janela e densidade unilateral.\n2. PSD representativa = soma(Tj × PSDj)/soma(Tj), em escala linear.\n3. Tj = amostras cobertas/fs; caudas excluídas constam em trechos.csv.\n4. Grms = raiz da integral de PSD na banda, em g²/Hz.\n5. Redução por maior erro espectral, seguida de preservação da área.\n6. Fator de ajuste numérico dos níveis: {fit['scale_factor']:.8g}.\n7. Maior erro na grade de avaliação: {fit['max_error_db']:.6g} dB.\n8. Critério de projeto: {fit['tolerance_db']:.6g} dB; atendido: {fit['passed']}.\n\nTempo de exposição preservado, sem compressão e sem equivalência de dano.\nO ajuste de área compensa a simplificação; não amplia o Grms de origem.\nA duração e a PSD representam somente os trechos cobertos nesta medição.\nO perfil médio não mantém a sequência temporal nem impactos individuais.\n\n## Pendências\n'''+ '\n'.join('- '+r for r in reasons or ['Proposta para revisão técnica; execução depende de verificação da mesa.'])+'''
 
 ## Base metodológica
 - ASTM D4728-06: 8.2 (dados representativos), 8.3 (controle na mesa), 10.2 (partida), 10.3 (tempo pleno), 10.4 (cautela com compressão).
@@ -270,4 +283,6 @@ Detalhes de origem, justificativas, configurações e hashes: receita.json.
         z.writestr('comparacao_subfaixas.csv',result['bands'].to_csv(index=False,float_format='%.12g'))
         z.writestr('receita.json',json.dumps(meta,ensure_ascii=False,indent=2,allow_nan=False))
         z.writestr('memoria_calculo.md',explanation)
+        z.writestr('referencias.md',references_markdown())
     return out.getvalue(), meta
+

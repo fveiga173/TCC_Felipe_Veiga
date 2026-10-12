@@ -77,6 +77,7 @@ class ScientificTests(unittest.TestCase):
             self.assertEqual(saved['status'],'DEMONSTRACAO')
             self.assertEqual(saved['duration_s'],20.)
             self.assertIn(b'DEMONSTRACAO',z.read('perfil_psd.csv'))
-            self.assertEqual(len(z.namelist()),6)
+            self.assertIn('referencias.md',z.namelist())
 
 if __name__=='__main__':unittest.main()
+

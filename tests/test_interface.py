@@ -55,4 +55,23 @@ app.main()
         self.assertFalse(at.exception)
         self.assertTrue(any('ESTUDO_PRELIMINAR' in e.value for e in at.info))
 
+    def test_scenarios_compression_and_selection(self):
+        at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
+        next(c for c in at.checkbox if c.label=='Usar demonstração sintética').check().run()
+        at.checkbox(key='enable_scenarios').check().run()
+        self.assertFalse(at.exception)
+        at.radio(key='scenario_choice').set_value('Compressão por aumento de intensidade').run()
+        self.assertFalse(at.exception)
+        at.number_input(key='compression_factor').set_value(5.).run()
+        at.number_input(key='compression_k').set_value(4.).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('pendente de validação experimental' in e.value for e in at.info))
+        at.radio(key='scenario_choice').set_value('Seleção de alta intensidade').run()
+        self.assertFalse(at.exception)
+        at.selectbox(key='epoch_rule').set_value('Limiar manual de Grms').run()
+        at.number_input(key='epoch_threshold').set_value(100.).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('Nenhum bloco acima' in e.value for e in at.warning))
+
 if __name__=='__main__':unittest.main()
+

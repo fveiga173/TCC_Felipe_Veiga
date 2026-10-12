@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from psd_recipe import build_recipe, export_bundle
+from scenario_ui import render_scenarios
 
 
 def render_recipe(t, x, fs, metadata, uncertain, demo):
@@ -40,17 +41,17 @@ def render_recipe(t, x, fs, metadata, uncertain, demo):
         max_points=c.number_input('Máximo de pontos do controlador',min_value=2,max_value=500,value=80,step=10,key='recipe_points')
         st.caption('Faixa inicial de estudo: 3–50 Hz. Confirme faixa útil e formato aceito no controlador; o limite de Nyquist não comprova resposta do sensor.')
     with st.expander('Registrar percurso, mesa e justificativas',expanded=False):
-        route=st.text_input('Percurso, veículo, carga e posição do sensor',key='recipe_route')
-        selection_reason=st.text_area('Justificativa dos trechos e das exclusões',key='recipe_selection')
-        band_reason=st.text_area('Justificativa da banda e da base temporal',help='Documente resposta do sensor, filtros, taxa adotada e limitações.',key='recipe_band_reason')
-        setup=st.text_area('Mesa, carga de ensaio e verificação de capacidade',help='Registre modelo/controlador, interpolação, força, curso, velocidade e aceleração admissíveis para a carga. Valores não são inferidos pelo aplicativo.',key='recipe_setup')
-        reviewed=st.checkbox('Conferi a aquisição, a orientação do eixo e a adequação da banda para este estudo',key='recipe_reviewed')
+        route=st.text_input('Percurso, veículo, carga e posição do sensor',key='recipe_route_'+stamp)
+        selection_reason=st.text_area('Justificativa dos trechos e das exclusões',key='recipe_selection_'+stamp)
+        band_reason=st.text_area('Justificativa da banda e da base temporal',help='Documente resposta do sensor, filtros, taxa adotada e limitações.',key='recipe_band_reason_'+stamp)
+        setup=st.text_area('Mesa, carga de ensaio e verificação de capacidade',help='Registre modelo/controlador, interpolação, força, curso, velocidade e aceleração admissíveis para a carga. Valores não são inferidos pelo aplicativo.',key='recipe_setup_'+stamp)
+        reviewed=st.checkbox('Conferi a aquisição, a orientação do eixo e a adequação da banda para este estudo',key='recipe_reviewed_'+stamp)
     # Resultado é recalculado a partir dos parâmetros atuais; evita download
     # de uma receita antiga após alteração silenciosa dos controles.
     try:
         result=build_recipe(rel,x,fs,table.to_dict('records'),float(low),float(high),
                             metadata['requested_welch_seconds'],metadata['requested_overlap'],
-                            mode,float(tolerance),int(max_points))
+                            mode,float(tolerance),int(max_points),metadata.get('requested_window','hann'))
     except (ValueError,TypeError,KeyError,OverflowError) as exc:
         st.error(f'Não foi possível gerar o perfil: {exc}');return
     fit=result['simplification']; settings=result['settings']
@@ -97,6 +98,8 @@ def render_recipe(t, x, fs, metadata, uncertain, demo):
     payload,report=export_bundle(result,context,state,reasons)
     st.download_button('Baixar receita e memória de cálculo (ZIP)',payload,
                        f'receita_psd_{state.lower()}.zip','application/zip',key='recipe_zip')
-    st.caption('ZIP: perfil genérico CSV, PSD de origem, trechos, comparação por bandas, parâmetros JSON e memória de cálculo. Não há envio à mesa. Conferir o formato de importação do controlador.')
+    st.caption('ZIP: perfil genérico CSV, PSD de origem, trechos, comparação por bandas, parâmetros JSON, memória de cálculo e referências. Conferir o formato de importação do controlador.')
     with st.expander('Parâmetros completos da receita'):
         st.json(report)
+    render_scenarios(rel,x,result,context,state,reasons)
+
