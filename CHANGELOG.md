@@ -1,3 +1,19 @@
+# Histórico de versões
+
+## 5.0.0 — 18/10/2026
+
+- Fluxo principal centrado na tabela de breakpoints, curva PSD, Grms e duração.
+- Banda inicial 1–50 Hz; seleção inicial dos 10% mais intensos por tempo coberto, ajustável, com blocos inteiros e empates explícitos.
+- Editor por frequência/PSD ou slope, importação CSV e recálculo de curvas, erros, comparações e exportações.
+- Catálogo de 17 perfis, incluindo Coreia 2020/2024, curvas históricas e Rissi digitalizado com ressalvas.
+- Comparação em banda comum sem extrapolação ou normalização das referências.
+- Leitura V2 com CRC por segmento, tratamento de prefixos incompletos e preservação das lacunas; V1 permanece estrito.
+- Conversão do BIN em blocos e verificação computacional de arquivo de 172,8 MB.
+- Exportação rastreável de perfil, seleção, segmentos, referências e memória de cálculo.
+- Estudos de compressão opcionais e identificados como modelo não validado, separados da curva principal.
+- Interface concentrada em mesa PSD; código científico legado preservado.
+- 41 testes automatizados aprovados e fluxo completo verificado com TEST007/010/011.
+
 # Histórico
 
 ## 4.0.0 — 12/10/2026

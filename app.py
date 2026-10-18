@@ -1,346 +1,324 @@
-"""Análise de vibração de transporte — versão 4.0, 2026-10-12.
-Executar: streamlit run app.py
-"""
-import io
+"""Curva PSD e breakpoints para ensaios de transporte — v5.0."""
 import hashlib
-from psd_recipe import load_binary, parse_metadata, VERSION
-from references import references_markdown
-from recipe_ui import render_recipe
-from freq_recipe_ui import render_fixed_recipe
+import io
 import json
+from dataclasses import replace
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.signal import welch, get_window
 import streamlit as st
+from acquisition import read_binary, read_csv_recording, synthetic_recording
+from psd_recipe import VERSION, interpolate
+from psd_workflow import (analyze_recording, select_intensity, automatic_profile,
+                          breakpoint_table, profile_from_slopes, assess_profile, export_workflow)
+from psd_catalog import load_catalog, compare_profiles
+from references import references_markdown
 
-PROFILES = {
-    'ASTM D4728-06 — Truck (X1.1)': ([1,4,16,40,80,200], [5e-5,.01,.01,.001,.001,1e-5], .52),
-    'ISO 13355 — reproduzido na ASTM D4728-06 (X1.3)': ([3,6,18,40,200], [.0005,.012,.012,.001,.0005], .59),
-}
 
-def read_csv(data):
-    df = pd.read_csv(io.BytesIO(data), sep=None, engine='python', comment='#')
-    df.columns = df.columns.str.strip()
-    return df
+def download_csv(label,frame,name,key=None):
+    st.download_button(label,frame.to_csv(index=False,float_format='%.12g').encode('utf-8-sig'),name,'text/csv',key=key)
 
-def number_series(s):
-    return pd.to_numeric(s.astype(str).str.replace(',', '.', regex=False), errors='coerce').to_numpy(float)
 
-# 1. Diagnóstico: examinar tempos sem ordenar, eliminar ou inventar amostras.
-def diagnose(t, x):
-    finite = np.isfinite(t) & np.isfinite(x)
-    tf = t[np.isfinite(t)]
-    dt = np.diff(tf)
-    pos = dt[dt > 0]
-    if len(pos) < 2:
-        raise ValueError('Não há intervalos positivos suficientes para analisar o tempo.')
-    med = float(np.median(pos))
-    return dict(n=len(t), invalid=int((~finite).sum()), duplicates=int((dt==0).sum()),
-                reversals=int((dt<0).sum()), median_dt=med, fs_median=1/med,
-                fs_mean=(len(t)-1)/(t[-1]-t[0]) if finite.all() and t[-1]>t[0] else None,
-                duration=float(tf[-1]-tf[0]), jitter=float(np.std(pos)/np.mean(pos)*100),
-                max_dt=float(pos.max()), gaps=int((pos>1.5*med).sum()))
-
-def integrate_band(f, p, low, high, loglog=False):
-    """Inclui limites exatos; referência integrada por lei de potência."""
-    if not f[0] <= low < high <= f[-1]:
-        raise ValueError('Banda fora da cobertura do espectro.')
-    grid = np.r_[low, f[(f>low)&(f<high)], high]
-    if loglog:
-        vals = np.exp(np.interp(np.log(grid), np.log(f), np.log(p)))
-        ratio = grid[1:]/grid[:-1]
-        b = np.log(vals[1:]/vals[:-1])/np.log(ratio)
-        k = b+1
-        terms = np.empty_like(k)
-        flat = np.abs(k)<1e-10
-        terms[flat] = vals[:-1][flat]*grid[:-1][flat]*np.log(ratio[flat])
-        terms[~flat] = vals[:-1][~flat]*grid[:-1][~flat]*np.expm1(k[~flat]*np.log(ratio[~flat]))/k[~flat]
-        return float(terms.sum())
-    vals = np.interp(grid, f, p)
-    return float(np.trapezoid(vals, grid))
-
-# 2. Estimativa espectral para inspeção e comparação normativa.
-# A receita usa nperseg fixo entre trechos no módulo psd_recipe.py.
-def spectrum(x, fs, seconds, overlap, window='hann'):
-    n = min(len(x), max(16, round(seconds*fs)))
-    ov = min(n-1, round(n*overlap))
-    step = n-ov
-    starts = np.arange(0, len(x)-n+1, step)
-    w=get_window(window,n,fftbins=True)
-    f,p = welch(x, fs=fs, window=w, nperseg=n, noverlap=ov,
-                detrend='constant', scaling='density', average='mean')
-    used = int(starts[-1]+n)
-    return f,p,dict(nperseg=n, noverlap=ov, segments=len(starts), unused=len(x)-used,
-                   segment_seconds=n/fs, bin_spacing=fs/n, enbw_hz=float(fs*np.sum(w*w)/np.sum(w)**2),window=window)
-
-def rms_blocks(t, x, seconds):
-    """Blocos por tempo real. RMS dinâmico: média local removida.
-    Pesos de integração trapezoidal respeitam intervalos reais; não reconstroem lacunas.
-    """
-    rows=[]
-    edges=np.r_[np.arange(t[0],t[-1],seconds), t[-1]]
-    for left,right in zip(edges[:-1],edges[1:]):
-        # Busca de limites evita percorrer todo o registro em cada janela.
-        # Isso mantém o mesmo cálculo em coletas de uma hora ou mais.
-        i=np.searchsorted(t,left,side='right');j=np.searchsorted(t,right,side='left')
-        tt=np.r_[left,t[i:j],right]
-        xx=np.r_[np.interp(left,t,x),x[i:j],np.interp(right,t,x)]
-        dur=right-left
-        mean=np.trapezoid(xx,tt)/dur
-        rms=np.sqrt(np.trapezoid((xx-mean)**2,tt)/dur)
-        rows.append([left-t[0],right-t[0],dur,mean,rms,int(np.searchsorted(t,right,side='left')-np.searchsorted(t,left,side='left'))])
-    return pd.DataFrame(rows,columns=['inicio_s','fim_s','duracao_s','media_g','rms_dinamico_g','amostras'])
-
-def display_indices(y, limit=20000):
-    """Reduz somente o desenho, preservando mínimo/máximo por bloco.
-    PSD, RMS e exportações continuam usando todas as amostras.
-    """
-    y=np.asarray(y)
-    if len(y)<=limit:return np.arange(len(y))
-    size=int(np.ceil(len(y)/(limit//2)))
-    count=len(y)//size;blocks=y[:count*size].reshape(count,size)
-    starts=np.arange(count)*size
-    return np.unique(np.r_[0,starts+blocks.argmin(axis=1),starts+blocks.argmax(axis=1),np.arange(count*size,len(y))])
-
-def line_plot(x,y,title,xlabel,ylabel):
-    idx=display_indices(y)
-    fig=go.Figure(go.Scattergl(x=np.asarray(x)[idx],y=np.asarray(y)[idx],mode='lines'))
-    fig.update_layout(title=title,xaxis_title=xlabel,yaxis_title=ylabel,height=360)
+def psd_figure(selected,profile,references=()):
+    fig=go.Figure()
+    fig.add_trace(go.Scatter(x=selected['frequency'],y=selected['all_psd'],name='Todos os blocos analisáveis',line=dict(color='#9aa8b7',width=1.2)))
+    fig.add_trace(go.Scatter(x=selected['frequency'],y=selected['psd'],name='PSD dos blocos selecionados',line=dict(color='#2677b8',width=1.8)))
+    grid=np.geomspace(profile.frequency_Hz.iloc[0],profile.frequency_Hz.iloc[-1],2000)
+    fig.add_trace(go.Scatter(x=grid,y=interpolate(profile.frequency_Hz,profile.psd_g2_per_Hz,grid,'log-log'),
+                             name='Curva de ensaio proposta',line=dict(color='#e68126',width=2.7)))
+    fig.add_trace(go.Scatter(x=profile.frequency_Hz,y=profile.psd_g2_per_Hz,name='Breakpoints',mode='markers',
+                             marker=dict(color='#e68126',size=7),hovertemplate='%{x:.4g} Hz<br>%{y:.5g} g²/Hz<extra>Breakpoint</extra>'))
+    low,high=float(grid[0]),float(grid[-1])
+    for r in references:
+        lo,hi=max(low,r['frequency_Hz'][0]),min(high,r['frequency_Hz'][-1])
+        if lo>=hi: continue
+        ff=np.geomspace(lo,hi,900)
+        fig.add_trace(go.Scatter(x=ff,y=interpolate(r['frequency_Hz'],r['psd_g2_per_Hz'],ff,'log-log'),
+                                 name=r['name'],line=dict(width=1.4,dash='dot')))
+    fig.update_layout(xaxis=dict(type='log',title='Frequência (Hz)',range=[np.log10(low),np.log10(high)]),
+                      yaxis=dict(type='log',title='PSD (g²/Hz)'),height=530,margin=dict(t=20,b=25),
+                      legend=dict(orientation='h',yanchor='top',y=-.17),hovermode='x unified')
     return fig
 
-def csv_download(label, df, filename):
-    st.download_button(label,df.to_csv(index=False).encode('utf-8-sig'),filename,'text/csv')
 
-def demo_data():
-    fs=1000.;t=np.arange(60000)/fs
-    rng=np.random.default_rng(42)
-    amplitude=np.where(t<40,.12,.30)
-    z=1+amplitude*np.sin(2*np.pi*8*t)+.07*np.sin(2*np.pi*35*t)+rng.normal(0,.015,len(t))
-    return pd.DataFrame({'time_s':t,'accel_z_g':z})
+def catalog_details(references):
+    for r in references:
+        with st.expander(r['name']):
+            source=r['source']
+            st.write(f"**{source['title']}** · {source.get('year','')} · {r['locator']}")
+            st.write(source.get('edition_note',''))
+            st.write(r.get('context',''))
+            if r.get('method'): st.write(r['method'])
+            st.markdown(f"[Fonte consultada]({source['url']})")
+            st.caption(f"Banda original: {r['frequency_Hz'][0]:g}–{r['frequency_Hz'][-1]:g} Hz. Grms publicado na banda original: {r.get('grms_full_reported_g') or 'não informado'} g. Não usar esse valor global como Grms de 1–50 Hz.")
+            st.dataframe(breakpoint_table(r['frequency_Hz'],r['psd_g2_per_Hz']),hide_index=True,height=230)
 
-# 3. Interface: origem → qualidade → análise → prescrição documentada.
+
+def editor(selected,tolerance,max_points,seed):
+    automatic,auto_fit=automatic_profile(selected,tolerance,max_points)
+    if st.session_state.get('_profile_seed')!=seed:
+        st.session_state['_profile_seed']=seed
+        st.session_state['_working_profile']=automatic
+        st.session_state['_editor_generation']=st.session_state.get('_editor_generation',0)+1
+        st.session_state['_last_editor_mode']=None
+    mode=st.radio('Editar a tabela por',['PSD (g²/Hz)','Inclinação (dB/oct)'],horizontal=True,key='profile_edit_mode')
+    if st.session_state.get('_last_editor_mode')!=mode:
+        st.session_state['_editor_generation']+=1
+        st.session_state['_last_editor_mode']=mode
+    if st.button('Restaurar breakpoints automáticos',key='restore_breakpoints'):
+        st.session_state['_working_profile']=automatic
+        st.session_state['_editor_generation']+=1
+    with st.expander('Importar uma tabela própria de breakpoints'):
+        imported=st.file_uploader('CSV com frequency_Hz e psd_g2_per_Hz',type=['csv'],key='import_profile_'+seed)
+        st.caption('Duas colunas numéricas em Hz e g²/Hz. A banda deve coincidir com a análise. Inclinações são recalculadas.')
+        if imported is not None and st.button('Aplicar tabela importada',key='apply_profile_'+seed):
+            try:
+                frame=pd.read_csv(imported)
+                st.session_state['_working_profile']=breakpoint_table(frame.frequency_Hz,frame.psd_g2_per_Hz)
+                st.session_state['_editor_generation']+=1
+            except (ValueError,KeyError,AttributeError) as exc: st.error(f'Tabela importada inválida: {exc}')
+    current=st.session_state['_working_profile']
+    key=f'breakpoints_{seed}_{st.session_state["_editor_generation"]}'
+    if mode=='PSD (g²/Hz)':
+        changed=st.data_editor(current,num_rows='dynamic',hide_index=True,height=330,key=key,
+            disabled=['slope_to_next_db_oct'],column_config={
+                'frequency_Hz':st.column_config.NumberColumn('Freq (Hz)',format='%.6g',min_value=.000001),
+                'psd_g2_per_Hz':st.column_config.NumberColumn('PSD (g²/Hz)',format='%.8g',min_value=1e-300),
+                'slope_to_next_db_oct':st.column_config.NumberColumn('Slope ↓ (dB/oct)',format='%.4f')})
+        proposed=breakpoint_table(changed.frequency_Hz,changed.psd_g2_per_Hz)
+    else:
+        initial=st.number_input('PSD do primeiro breakpoint (g²/Hz)',min_value=1e-300,value=float(current.psd_g2_per_Hz.iloc[0]),format='%.10g',key='first_psd_'+key)
+        changed=st.data_editor(current[['frequency_Hz','slope_to_next_db_oct']],num_rows='dynamic',hide_index=True,height=330,key=key,
+            column_config={'frequency_Hz':st.column_config.NumberColumn('Freq (Hz)',format='%.6g'),
+                           'slope_to_next_db_oct':st.column_config.NumberColumn('Slope ↓ (dB/oct)',format='%.4f')})
+        if pd.notna(changed.slope_to_next_db_oct.iloc[-1]):
+            raise ValueError('A última linha não tem próximo ponto: deixe sua inclinação vazia.')
+        proposed=profile_from_slopes(changed.frequency_Hz,initial,changed.slope_to_next_db_oct.iloc[:-1])
+        st.dataframe(proposed,hide_index=True,height=230)
+    fit=assess_profile(selected,proposed,tolerance)
+    changed_values=(proposed.shape!=current.shape or not np.allclose(proposed.iloc[:,:2],current.iloc[:,:2],rtol=1e-12,atol=0.))
+    st.session_state['_working_profile']=proposed
+    if changed_values:
+        # Atualiza também as colunas calculadas do próprio editor, sem deixar
+        # inclinações visíveis de uma versão anterior da tabela.
+        st.session_state['_editor_generation']+=1
+        st.rerun()
+    fit['automatic_seed']=auto_fit
+    fit['manually_changed']=not (proposed.shape==automatic.shape and np.allclose(proposed.iloc[:,:2],automatic.iloc[:,:2],rtol=1e-12,atol=0.))
+    return proposed,fit
+
+
 def main():
-    st.set_page_config(page_title='Veiga | Análise de vibração',layout='wide')
-    st.title('Análise de vibração de transporte')
-    st.caption('Caracterizar o percurso → comparar referências → definir parâmetros → gerar guia · v4.0')
+    st.set_page_config(page_title='Veiga | Curva PSD e breakpoints',page_icon='📈',layout='wide')
+    st.title('Curva PSD e breakpoints de ensaio')
+    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v5.0')
+    catalog=load_catalog()
     with st.sidebar:
-        st.header('Dados')
+        st.header('Medição')
         uploaded=st.file_uploader('CSV ou BIN do sensor',type=['csv','bin'])
         report_file=st.file_uploader('TXT do diagnóstico (obrigatório com BIN)',type=['txt'])
         demo=st.checkbox('Usar demonstração sintética',value=False)
-        with st.expander('Metadados da aquisição'):
-            source=st.selectbox('Contexto da aquisição',['Teste manual / funcional','Transporte em veículo','Mesa vibratória','Outro'])
-            unit=st.selectbox('Unidade da aceleração',['g','m/s²'])
-            fullscale=st.selectbox('Escala do sensor (g)',['Não confirmada',2,4,8,16])
-            st.caption('Confirme escala e filtros no firmware. O aplicativo não os deduz do CSV.')
-    firmware={}
-    input_hash=''
-    binary_mode=bool(uploaded and uploaded.name.lower().endswith('.bin') and not demo)
-    if demo:
-        df=demo_data(); filename='demonstracao_sintetica.csv'
-        input_hash=hashlib.sha256(df.to_csv(index=False).encode()).hexdigest()
-        st.info('Demonstração sintética de 60 s a 1000 Hz: componentes de 8 e 35 Hz e mudança de intensidade aos 40 s. Não representa transporte.')
-    elif uploaded:
-        raw=uploaded.getvalue();input_hash=hashlib.sha256(raw).hexdigest()
-        try:
-            if binary_mode:
-                if not report_file: st.info('Envie o TXT correspondente ao BIN.');return
-                df,firmware=load_binary(raw,report_file.getvalue())
-                unit='g';fullscale=4
+        source=st.selectbox('Contexto da aquisição',['Teste manual / funcional','Transporte em veículo','Mesa vibratória','Outro'])
+        unit=st.selectbox('Unidade do CSV',['g','m/s²'])
+        fullscale=st.selectbox('Escala confirmada do CSV (g)',['Não confirmada',2,4,8,16])
+    try:
+        if demo:
+            if '_demo_recording' not in st.session_state: st.session_state['_demo_recording']=synthetic_recording()
+            recording=st.session_state['_demo_recording']; filename='demonstracao_sintetica_1000s'
+            stamp=recording.metadata['sha256_input']
+            st.info('DEMONSTRAÇÃO: sinal sintético de 1000 s, com aumento de intensidade nos últimos 100 s. Não representa uma campanha de transporte.')
+        elif uploaded is not None:
+            filename=uploaded.name
+            if filename.lower().endswith('.bin'):
+                if report_file is None: st.info('Envie o TXT correspondente ao BIN para conferir integridade e segmentos.'); return
+                data=uploaded.getbuffer(); report=report_file.getvalue()
+                stamp=hashlib.sha256(data).hexdigest()+hashlib.sha256(report).hexdigest()
+                if st.session_state.get('_loaded_stamp')!=stamp:
+                    st.session_state['_loaded_recording']=read_binary(data,report)
+                    st.session_state['_loaded_stamp']=stamp
+                recording=st.session_state['_loaded_recording'];fullscale=4
             else:
-                df=read_csv(raw)
-                firmware=parse_metadata('\n'.join(line for line in raw.decode('utf-8-sig').splitlines() if line.strip().startswith('#')))
-        except Exception as exc: st.error(f'Falha ao ler aquisição: {exc}');return
-        filename=uploaded.name
-    else:
-        st.info('Envie o CSV ou ative a demonstração sintética. Esperado: time_s e pelo menos um eixo de aceleração.')
-        return
-    nominal=binary_mode or firmware.get('time_basis')=='sample_index_nominal'
-    if nominal:
-        time_basis='Índice nominal / FIFO'
-        st.warning('Tempo nominal por índice: regularidade do CSV não comprova regularidade do sensor. A PSD e a duração usam a taxa do eixo nominal; não há correção automática pelo relógio do Arduino.')
-    elif demo:
-        time_basis='Sintética conhecida'
-    else:
-        time_basis=st.selectbox('Origem do eixo temporal',['Não identificada','Tempos medidos pelo Arduino','Índice nominal / FIFO'])
-    if binary_mode:
-        st.success('BIN + TXT consistentes: estado final OK, sem erro/transbordamento, quantidade e CRC32 conferidos.')
-        st.caption(f'{firmware["acquisition_profile"]} · taxa nominal {firmware["sample_rate_nominal_hz"]} Hz; estimativa vs. relógio Arduino {firmware["rate_vs_arduino_hz"]:.6f} Hz. Estimativa não calibrada. Conversão: 8192 contagens/g, ±4 g.')
-    if not demo and firmware:
-        try:
-            failed=(firmware.get('status','OK')!='OK' or int(firmware.get('error_code',0))!=0 or int(firmware.get('fifo_overflows',0))!=0)
-        except (ValueError,TypeError):
-            st.error('Diagnóstico inválido nos metadados de aquisição.');return
-        if failed:
-            st.error('Metadados informam coleta incompleta, erro ou transbordamento. Não gerar parâmetros de ensaio a partir deste arquivo.');return
-    if 'time_s' not in df or len(df)<16:
-        st.error('São necessárias a coluna time_s em segundos e pelo menos 16 linhas.');return
-    columns=[c for c in df if c!='time_s']
-    if not columns: st.error('Não há coluna de aceleração.');return
-    axis=st.selectbox('Eixo de análise',columns,index=columns.index('accel_z_g') if 'accel_z_g' in columns else 0)
-    t=number_series(df.time_s);x=number_series(df[axis])
-    if unit=='m/s²':x=x/9.80665
-    try:d=diagnose(t,x)
-    except ValueError as exc:st.error(str(exc));return
-    fs_analysis=float(firmware['sample_rate_nominal_hz']) if binary_mode else d['fs_median']
-    st.subheader('Qualidade da aquisição')
-    cols=st.columns(4)
-    for col,label,value in zip(cols,['Amostras','Duração','Taxa média','Taxa pela mediana'],
-        [f'{d["n"]:,}',f'{d["duration"]:.3f} s',f'{d["fs_mean"]:.2f} Hz' if d['fs_mean'] else '—',f'{d["fs_median"]:.2f} Hz']):col.metric(label,value)
-    if nominal:st.caption(f'Exposição nominal de N amostras: {len(t)/fs_analysis:.6f} s. O intervalo entre a primeira e a última marca é (N−1)/fs; não é a mesma convenção de duração.')
-    quality=pd.DataFrame({'Verificação':['Intervalo mediano (ms)','Maior intervalo (ms)','Variação relativa dos intervalos (%)','Intervalos > 1,5 × mediana','Linhas inválidas','Tempos duplicados','Recuos do relógio'],
-        'Resultado':[d['median_dt']*1000,d['max_dt']*1000,d['jitter'],d['gaps'],d['invalid'],d['duplicates'],d['reversals']]})
-    with st.expander('Ver diagnóstico detalhado da aquisição'):
-        st.dataframe(quality,hide_index=True)
-    if d['invalid'] or d['duplicates'] or d['reversals']:
-        st.error('Sequência inválida para esta análise. Nenhuma linha foi removida ou reordenada. Corrija a aquisição ou selecione externamente um trecho contínuo, preservando o original.');return
-    uncertain=d['jitter']>5 or d['gaps']>0
-    if uncertain:st.warning('Amostragem irregular: FFT/PSD ficam bloqueadas por padrão. Os limites de 5% e 1,5 × mediana são critérios de triagem do aplicativo, não tolerâncias normativas.')
-    finite_x=x[np.isfinite(x)]
-    guessed_hits=int(np.sum((finite_x<=-4)|(np.isclose(finite_x,3.99988,atol=.00001,rtol=0))))
-    hits=0
-    if fullscale!='Não confirmada':
-        hits=int(np.sum(np.abs(x)>=float(fullscale)*(1-1/32768)-.00001))
-        if hits:st.warning(f'{hits} amostras próximas ou além dos limites da faixa ±{fullscale} g. Possível saturação; os picos não podem ser recuperados por filtragem.')
-    elif guessed_hits:
-        st.warning(f'{guessed_hits} amostras compatíveis com limite de ±4 g ou além dele. É uma suspeita; confirme a escala e a conversão no Arduino.')
-    if source=='Teste manual / funcional' and not demo:
-        st.info('Teste manual: resultados para avaliação funcional. Mudanças de inclinação alteram a contribuição da gravidade; remover a média não corrige orientação.')
-    rel=t-t[0]
-    start=0.
-    end=float(rel[-1])
-    seg=4.
-    overlap=.5
-    rms_s=1.
-    with st.expander('Ajustar trecho e processamento',expanded=False):
-        a,b=st.columns(2)
-        start=a.number_input('Início do trecho (s)',min_value=0.,max_value=float(rel[-1]),value=0.)
-        end=b.number_input('Fim do trecho (s)',min_value=0.,max_value=float(rel[-1]),value=float(rel[-1]))
-        a,b,c=st.columns(3)
-        seg=a.number_input('Janela de análise PSD (s)',min_value=.1,value=4.,step=.5)
-        overlap=b.selectbox('Sobreposição entre janelas',[50,0,75],format_func=lambda v:f'{v}%')/100
-        rms_s=c.number_input('Intervalo para RMS temporal (s)',min_value=.1,value=1.,step=.5)
-        window=st.selectbox('Janela espectral',['hann','hamming'],format_func=lambda w:w.title()+' periódica',key='welch_window')
-        st.caption('Inicial: Welch/Hann, 4 s e 50% de sobreposição. Hamming está disponível para estudos comparativos com Eagleton; 1 s/0% aproxima parte de seu método, mas não reproduz aquisição por disparo ou filtros. Sem zero-padding; espaçamento e largura equivalente de ruído são documentados.')
-    mask=(rel>=start)&(rel<=end)
-    if end<=start or mask.sum()<16:st.error('Selecione um trecho com pelo menos 16 amostras.');return
-    t=t[mask];x=x[mask]; dc=float(np.mean(x));z=x-dc
-    spectral_ok=not uncertain
-    if uncertain:
-        spectral_ok=st.checkbox('Calcular PSD exploratória supondo espaçamento uniforme pela mediana (não corrige a aquisição)',value=False)
-    status='EXPLORATORIO — tempo irregular' if uncertain else 'TEMPO REGULAR NA TRIAGEM — banda do sensor ainda requer confirmação'
-    tabs=st.tabs(['1 · Caracterizar percurso','2 · Definir receitas','3 · Guia e exportação'])
-    with tabs[0]:
-        fig=line_plot(t-t[0],z,'Aceleração dinâmica do percurso','Tempo no trecho (s)','Aceleração dinâmica (g)')
-        st.caption('Sinal após remoção da média da seleção. Em séries longas, o gráfico é reduzido visualmente por blocos; os cálculos usam todas as amostras.')
-        st.plotly_chart(fig,width='stretch')
-        with st.expander('Ver sinal bruto e efeito da remoção da média'):
-            rawfig=line_plot(t-t[0],x,'Aceleração original','Tempo no trecho (s)','Aceleração (g)')
-            st.plotly_chart(rawfig,width='stretch')
-            st.write(f'Média removida da seleção: {dc:.5f} g. A remoção separa o componente dinâmico da componente constante de orientação/gravidade; não corrige mudanças de orientação durante a coleta.')
-        r=rms_blocks(t,x,rms_s)
-        duration=t[-1]-t[0]
-        weighted_mean=float(np.trapezoid(x,t)/duration)
-        rms_t=float(np.sqrt(np.trapezoid((x-weighted_mean)**2,t)/duration))
-        st.metric('RMS global da aceleração dinâmica',f'{rms_t:.5f} g')
-        st.caption('RMS calculado após remover a média, ponderado pelo tempo real. É um valor global da banda registrada; a PSD e a distribuição abaixo mostram como a energia se organiza em frequência e ao longo do percurso.')
-        st.plotly_chart(line_plot((r.inicio_s+r.fim_s)/2,r.rms_dinamico_g,'RMS dinâmico por intervalo','Tempo no trecho (s)','RMS (g)'),width='stretch')
-        counts,edges=np.histogram(r.rms_dinamico_g,bins=10,weights=r.duracao_s)
-        dist=pd.DataFrame({'rms_min_g':edges[:-1],'rms_max_g':edges[1:],'tempo_s':counts,'tempo_percentual':100*counts/counts.sum()})
-        st.plotly_chart(go.Figure(go.Bar(x=(edges[:-1]+edges[1:])/2,y=dist.tempo_percentual)).update_layout(title='Distribuição do tempo entre níveis de RMS',xaxis_title='RMS por intervalo (g)',yaxis_title='Tempo (%)'),width='stretch')
-        st.caption('Cada intervalo tem sua própria média removida. A distribuição depende da duração escolhida; o último intervalo parcial é ponderado pela duração efetiva.')
-        csv_download('Baixar RMS por intervalo',r,'rms_por_intervalo.csv')
-        csv_download('Baixar distribuição de níveis',dist,'distribuicao_rms.csv')
-    metadata=dict(version=VERSION,file=filename,context=source,axis=axis,unit_input=unit,fullscale_g=fullscale,diagnostic=d,status=status,start_s=start,end_s=end,rms_interval_s=rms_s,possible_saturation_count=hits if fullscale!='Não confirmada' else guessed_hits,acquisition_validated=False)
-    metadata.update(sha256_input=input_hash,firmware=firmware,time_basis=time_basis,requested_welch_seconds=seg,requested_overlap=overlap,requested_window=window,fs_analysis_hz=fs_analysis)
-    metadata['possible_saturation_count']=max(metadata['possible_saturation_count'],int(firmware.get('saturation_samples',0)),int(firmware.get('rail_samples_recomputed',0)))
-    with tabs[0]:
-        st.subheader('PSD medida e referências')
-        if not spectral_ok:
-            st.info('PSD bloqueada pela irregularidade temporal. Use o sinal temporal e o diagnóstico para investigar a aquisição. A opção exploratória está acima.')
+                data=uploaded.getvalue();base=hashlib.sha256(data).hexdigest()+unit
+                if st.session_state.get('_csv_base')!=base:
+                    st.session_state['_csv_default']=read_csv_recording(data,unit=unit)
+                    st.session_state['_csv_base']=base
+                default=st.session_state['_csv_default']
+                with st.sidebar: axis=st.selectbox('Eixo do CSV',default.metadata['columns'],key='csv_axis_'+base[:12])
+                stamp=base+axis
+                if axis==default.metadata['axis']: recording=default
+                elif st.session_state.get('_loaded_stamp')==stamp: recording=st.session_state['_loaded_recording']
+                else:
+                    recording=read_csv_recording(data,axis,unit)
+                    st.session_state['_loaded_recording']=recording;st.session_state['_loaded_stamp']=stamp
         else:
-            fs=fs_analysis;f,p,settings=spectrum(z,fs,seg,overlap,window);metadata['welch']=settings
-            if uncertain:st.error('PSD EXPLORATÓRIA: eixo de frequência calculado com espaçamento uniforme presumido. Não usar como receita de ensaio.')
-            st.caption(f'PSD de Welch · {window.title()} periódica · janela {settings["segment_seconds"]:.1f} s · espaçamento {settings["bin_spacing"]:.3f} Hz · largura equivalente de ruído {settings["enbw_hz"]:.3f} Hz.')
-            low=3.
-            high=min(50.,float(f[-1]))
-            with st.expander('Alterar a banda de comparação com as referências'):
-                a,b=st.columns(2)
-                low=a.number_input('Frequência mínima (Hz)',min_value=.01,max_value=float(f[-1]),value=3.)
-                high=b.number_input('Frequência máxima (Hz)',min_value=.01,max_value=float(f[-1]),value=min(50.,float(f[-1])))
-            st.caption('Banda inicial de comparação: 3–50 Hz. É uma escolha do estudo; confirme a resposta útil do sensor e da mesa antes de interpretar o resultado.')
-            fig=go.Figure(go.Scatter(x=f[1:],y=p[1:],name='PSD experimental Welch',mode='lines'))
-            for name,(ff,pp,_) in PROFILES.items():fig.add_trace(go.Scatter(x=ff,y=pp,name=name,mode='lines+markers',line={'dash':'dash'}))
-            fig.update_layout(title='PSD experimental e referências',xaxis={'type':'log','title':'Frequência (Hz)'},yaxis={'type':'log','title':'PSD (g²/Hz)'},height=520,legend={'orientation':'h'})
-            if high>low:fig.add_vrect(x0=low,x1=high,fillcolor='lightblue',opacity=.12,line_width=0)
-            st.plotly_chart(fig,width='stretch')
-            common_low=max(low,3.);common_high=min(high,200.,f[-1])
-            if common_high<=common_low:
-                st.warning('Não há banda comum válida para comparar todas as referências.')
-            else:
-                st.write(f'**Comparação comum: {common_low:.3f}–{common_high:.3f} Hz para todas as linhas.**')
-                measured=np.sqrt(integrate_band(f,p,common_low,common_high))
-                rows=[{'Perfil':'Experimental Welch','Banda mínima (Hz)':common_low,'Banda máxima (Hz)':common_high,'Grms na banda (g)':measured,'Experimental / referência':1.}]
-                for name,(ff,pp,overall) in PROFILES.items():
-                    reference=np.sqrt(integrate_band(np.array(ff,float),np.array(pp,float),common_low,common_high,True))
-                    row={'Perfil':name,'Banda mínima (Hz)':common_low,'Banda máxima (Hz)':common_high,'Grms na banda (g)':reference,'Experimental / referência':measured/reference}
-                    # Distância em dB na grade logarítmica comum. Remover a
-                    # média do erro compara forma sem confundir com intensidade.
-                    grid=np.geomspace(common_low,common_high,256)
-                    observed=np.interp(grid,f,p)
-                    expected=np.exp(np.interp(np.log(grid),np.log(ff),np.log(pp)))
-                    if np.all(observed>0):
-                        delta=10*np.log10(observed/expected)
-                        row['Distância de forma (dB)']=float(np.sqrt(np.mean((delta-delta.mean())**2)))
-                    rows.append(row)
-                table=pd.DataFrame(rows);st.dataframe(table,hide_index=True)
-                if 'Distância de forma (dB)' in table:
-                    closest=table.loc[table['Distância de forma (dB)'].idxmin(),'Perfil']
-                    st.caption(f'Referência com forma mais próxima entre as curvas disponíveis: {closest}. Critério descritivo: RMS do erro em dB após retirar seu nível médio, em 256 frequências logarítmicas na banda comum. Não comprova conformidade ou equivalência.')
-                st.caption('Razão de Grms compara intensidade global, não forma espectral nem conformidade. Os valores publicados de 0,52 e 0,59 g se referem às bandas completas das respectivas referências.')
-                csv_download('Baixar comparação na banda comum',table,'comparacao_banda_comum.csv')
-                with st.expander('Detalhar contribuição por faixa de frequência'):
-                    cuts=sorted(set([common_low,common_high]+[v for v in [3,10,20,50,100,200] if common_low<v<common_high]))
-                    bandrows=[]
-                    for l,h in zip(cuts[:-1],cuts[1:]):
-                        energy=integrate_band(f,p,l,h)
-                        bandrows.append({'min_Hz':l,'max_Hz':h,'Grms_g':np.sqrt(energy),'fracao_quadratica_percentual':100*energy/measured**2 if measured else 0})
-                    st.dataframe(pd.DataFrame(bandrows),hide_index=True)
-                    st.caption('Faixas descritivas para leitura da distribuição espectral; não são divisões adicionais prescritas por norma.')
-                metadata['comparison_band_Hz']=[common_low,common_high]
-            exported=pd.DataFrame({'frequency_Hz':f,'psd_g2_per_Hz':p,'status':status})
-            csv_download('Baixar PSD Welch',exported,'psd_welch.csv')
+            st.info('Envie uma medição ou ative a demonstração. A entrega é a tabela Hz × g²/Hz que define a curva do ensaio.')
+            with st.expander(f'Conhecer as {len(catalog)} curvas de referência disponíveis'):
+                catalog_details(catalog)
+            return
+    except (ValueError,KeyError,TypeError,UnicodeError) as exc:
+        st.error(f'Falha ao ler aquisição: {exc}');return
+    if recording.metadata.get('integrity_verified'):
+        st.success(f'BIN + TXT: quantidade e CRC32 conferidos em {len(recording.segments)} segmento(s).')
+    for notice in recording.notices: st.caption(notice)
+    rails=int(recording.metadata.get('rail_samples_recomputed',0))
+    if recording.metadata.get('format')=='CSV' and fullscale!='Não confirmada':
+        clip_key=(stamp,float(fullscale))
+        if st.session_state.get('_clip_key')!=clip_key:
+            st.session_state['_clip_count']=sum(int(np.count_nonzero(np.abs(recording.raw[i:i+1000000])>=.98*float(fullscale))) for i in range(0,recording.samples,1000000))
+            st.session_state['_clip_key']=clip_key
+        rails=int(st.session_state['_clip_count'])
+    with st.sidebar:
+        st.header('Curva de ensaio')
+        low=st.number_input('Frequência mínima (Hz)',min_value=.01,value=1.,step=.5,key='recipe_low')
+        high=st.number_input('Frequência máxima (Hz)',min_value=.02,value=50.,step=5.,key='recipe_high')
+        selection_mode=st.selectbox('Trechos usados no perfil',['Alta intensidade','Todos os blocos','Complemento de menor intensidade'],key='selection_mode')
+        percent=st.number_input('Tempo de alta intensidade (%)',min_value=.1,max_value=100.,value=10.,step=1.,key='high_percentage')
+        with st.expander('Processamento e simplificação'):
+            epoch=st.number_input('Bloco de intensidade (s)',min_value=.1,value=10.,step=1.,key='epoch_seconds')
+            seconds=st.number_input('Janela Welch (s)',min_value=.1,value=4.,step=.5,key='welch_seconds')
+            overlap=st.selectbox('Sobreposição Welch (%)',[50,0,75],key='overlap')/100
+            window=st.selectbox('Janela espectral',['hann','hamming'],key='welch_window')
+            tolerance=st.number_input('Erro espectral admitido (dB)',min_value=.05,max_value=10.,value=1.,step=.25,key='recipe_tolerance')
+            max_points=st.number_input('Máximo de breakpoints automáticos',min_value=2,max_value=500,value=80,step=5,key='recipe_points')
+        with st.expander('Recortar a medição'):
+            st.caption('Posição nominal acumulada por amostras, em segundos; não é o relógio da viagem. Segmentos continuam separados.')
+            crop=st.checkbox('Aplicar recorte nominal',key='crop_enabled')
+            if crop:
+                start=st.number_input('Início nominal (s)',min_value=0.,value=0.,key='crop_start_'+stamp[:12])
+                end=st.number_input('Fim nominal exclusivo (s)',min_value=.001,value=float(recording.samples/recording.fs),key='crop_end_'+stamp[:12])
+                if not 0<=start<end<=recording.samples/recording.fs:
+                    st.error('Recorte fora da medição ou com limites inválidos.');return
+                segments=recording.segments.copy()
+                segments.first_sample=np.maximum(segments.first_sample,round(start*recording.fs))
+                segments.end_sample_exclusive=np.minimum(segments.end_sample_exclusive,round(end*recording.fs))
+                segments=segments[segments.end_sample_exclusive>segments.first_sample]
+                processing_recording=replace(recording,segments=segments)
+            else: processing_recording=recording;start=0.;end=recording.samples/recording.fs
+    analysis_key=hashlib.sha256(json.dumps([stamp,low,high,epoch,seconds,overlap,window,start,end]).encode()).hexdigest()
+    try:
+        if st.session_state.get('_analysis_key')!=analysis_key:
+            with st.spinner('Calculando PSD por blocos, sem atravessar interrupções…'):
+                analysis=analyze_recording(processing_recording,low,high,epoch,seconds,overlap,window)
+            st.session_state['_analysis']=analysis;st.session_state['_analysis_key']=analysis_key
+        analysis=st.session_state['_analysis']
+        selected=select_intensity(analysis,percent,selection_mode=='Todos os blocos',selection_mode=='Complemento de menor intensidade')
+    except (ValueError,TypeError,OverflowError) as exc: st.error(f'Não foi possível gerar a PSD: {exc}');return
+    settings=selected['settings']
+    st.caption(f"Banda de estudo: {low:g}–{high:g} Hz · classificação pelo Grms nessa banda · blocos de {epoch:g} s · Welch {seconds:g} s, {100*overlap:g}% de sobreposição. Confirme a banda útil do conjunto sensor/mesa.")
+    tabs=st.tabs(['1 · Curva e breakpoints','2 · Comparar referências','3 · Aquisição e seleção','4 · Método e exportação'])
+    seed=hashlib.sha256(json.dumps([analysis_key,selection_mode,percent,tolerance,max_points]).encode()).hexdigest()[:16]
     with tabs[0]:
-        with st.expander('Ver intervalos entre amostras'):
-            dt=np.diff(t)*1000
-            st.plotly_chart(line_plot(t[1:]-t[0],dt,'Intervalos entre registros','Tempo no trecho (s)','Δt (ms)'),width='stretch')
-            st.caption('O gráfico complementa o diagnóstico acima; não corrige falhas do relógio ou amostras ausentes.')
+        st.subheader('Tabela que define a curva de ensaio')
+        st.caption('Edite frequência e PSD, ou a inclinação para o próximo ponto. A curva, o Grms, a comparação e os downloads seguem a tabela atual.')
+        try: profile,fit=editor(selected,tolerance,int(max_points),seed)
+        except (ValueError,TypeError,OverflowError) as exc: st.error(f'Perfil inválido: {exc}');return
+        a,b,c,d=st.columns(4)
+        a.metric('Grms da curva proposta',f'{fit["recipe_grms"]:.5f} g')
+        b.metric('Grms dos blocos selecionados',f'{fit["input_grms"]:.5f} g')
+        c.metric('Tempo representado no nível pleno',f'{settings["selected_duration_s"]:.3f} s')
+        d.metric('Breakpoints',len(profile))
+        st.plotly_chart(psd_figure(selected,profile),width='stretch',key='main_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'curva_psd_breakpoints','scale':2}})
+        st.write(f"**Seleção efetiva: {settings['selected_duration_percentage']:.2f}% do tempo coberto**, {settings['selected_blocks']} de {settings['total_blocks']} blocos. Duração mantida dos blocos selecionados; sem aumento automático de intensidade.")
+        if not fit['passed']: st.warning(f"Limite de pontos ou edição atual não atende ao erro escolhido: {fit['max_error_db']:.2f} dB > {tolerance:g} dB. Ajuste a tabela ou a simplificação.")
+        st.caption(f"Erro máximo na grade: {fit['max_error_db']:.3f} dB · diferença de área: {fit['area_difference_percent']:+.3f}%. São critérios numéricos do estudo, não tolerâncias de controle da mesa.")
+        download_csv('Baixar tabela de breakpoints (CSV)',profile,'breakpoints_psd.csv',key='download_breakpoints')
     with tabs[1]:
-        recipe_tabs=st.tabs(['Mesa servo-controlada · PSD','Mesa de frequência fixa'])
-        with recipe_tabs[0]:render_recipe(t,x,fs_analysis,metadata,uncertain,demo)
-        with recipe_tabs[1]:render_fixed_recipe(t,x,fs_analysis,metadata,uncertain,demo)
+        st.subheader('Curva proposta e perfis publicados')
+        by_id={r['id']:r for r in catalog}
+        ids=st.multiselect('Curvas de referência',list(by_id),default=['d4169_2016_medium','korea_2020_leaf_spring_high','rissi2008_vertical_digitized'],
+                           format_func=lambda k:by_id[k]['name'],key='reference_ids')
+        chosen=[by_id[k] for k in ids]
+        try: comparison,common=compare_profiles(selected,profile,chosen)
+        except ValueError as exc: st.error(str(exc));comparison=pd.DataFrame();common=None
+        st.plotly_chart(psd_figure(selected,profile,chosen),width='stretch',key='reference_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'comparacao_psd_referencias','scale':2}})
+        if common:
+            st.info(f'Comparação numérica na mesma banda para todas as curvas: {common[0]:g}–{common[1]:g} Hz. Grms globais publicados aparecem nos detalhes das fontes.')
+            if common!=[low,high]: st.caption('A faixa foi reduzida à interseção das referências escolhidas; não foram inventados valores fora da cobertura.')
+            labels={'reference':'Referência','reference_grms_common_g':'Grms referência (g)','selected_grms_common_g':'Grms medido selecionado (g)',
+                    'proposed_grms_common_g':'Grms proposto (g)','proposed_to_reference_grms':'Proposto / referência','shape_distance_db':'Distância de forma (dB)'}
+            st.dataframe(comparison[list(labels)].rename(columns=labels),hide_index=True)
+            st.caption('Distância de forma: RMS do erro em dB após retirar o nível médio, em 512 frequências logarítmicas. Compara forma; a razão de Grms compara intensidade. As curvas não são normalizadas.')
+            download_csv('Baixar comparação na banda comum',comparison,'comparacao_referencias.csv',key='download_comparison')
+        elif not chosen: st.info('Escolha referências para comparar os perfis na banda comum.')
+        st.caption('Perfis históricos mantêm a edição identificada. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
+        catalog_details(chosen)
     with tabs[2]:
-        st.markdown('''**Escopo:** caracterizar vibrações no piso do veículo e gerar um guia prático reproduzível de parâmetros. A receita de referência conserva a exposição coberta; os cenários opcionais comparam níveis e durações. Não avalia danos em produtos, não executa ensaios físicos e não declara certificação ou equivalência entre mesas.
+        a,b,c,d=st.columns(4)
+        a.metric('Amostras verificadas/disponíveis',f'{recording.samples:,}')
+        b.metric('Segmentos da aquisição',len(recording.segments))
+        c.metric('Tempo coberto pelos blocos',f'{settings["covered_duration_s"]:.3f} s')
+        d.metric('Caudas excluídas da análise',f'{settings["tail_excluded_s"]:.3f} s')
+        if recording.metadata.get('format')=='MPUZ_RAW_LE_V2':
+            st.write(f"Estado original: **{recording.metadata.get('status')}** · fechamento final confirmado: **{'sim' if recording.metadata.get('session_closed_verified') else 'não'}** · overflows registrados: **{recording.metadata.get('fifo_overflows',recording.metadata.get('fifo_overflows_so_far','—'))}**.")
+            st.caption('O estado original foi preservado. Um V2 incompleto pode ser estudado somente até os checkpoints cujo CRC confira. As perdas exatas continuam desconhecidas.')
+        if rails: st.warning('Há amostras no limite ou próximas da escala; revisar saturação antes de interpretar níveis e forma espectral.')
+        blocks=selected['blocks']
+        fig=go.Figure(go.Scattergl(x=blocks.nominal_position_s,y=blocks.grms_band_g,mode='markers',
+                         marker=dict(color=np.where(blocks.selected,'#e68126','#93a4b5')),name='Grms por bloco',
+                         customdata=blocks[['segment_id','duration_s','selected']],
+                         hovertemplate='Posição nominal: %{x:.3f} s<br>Grms: %{y:.5f} g<br>Segmento %{customdata[0]}<br>Duração %{customdata[1]} s<br>Selecionado: %{customdata[2]}<extra></extra>'))
+        fig.update_layout(height=330,xaxis_title='Posição nominal acumulada por amostras (s)',yaxis_title=f'Grms em {low:g}–{high:g} Hz (g)')
+        st.plotly_chart(fig,width='stretch',key='intensity_plot')
+        st.caption('Laranja: blocos selecionados. Eixo nominal acumulado não inclui a duração real das interrupções. O percentual pode exceder o solicitado por blocos inteiros e empates.')
+        st.dataframe(blocks,hide_index=True,height=270)
+        with st.expander('Segmentos, caudas e metadados originais'):
+            st.dataframe(recording.segments,hide_index=True)
+            st.dataframe(selected['excluded'],hide_index=True)
+            st.json(recording.metadata)
+        download_csv('Baixar seleção de blocos',blocks,'blocos_classificados.csv',key='download_blocks')
+    with tabs[3]:
+        st.subheader('Documentar e exportar a receita')
+        route=st.text_area('Percurso, veículo, suspensão, carga e montagem do sensor',key='route_'+stamp[:12])
+        justification=st.text_area('Justificativa da seleção, banda e duração',key='justification_'+stamp[:12])
+        setup=st.text_area('Mesa, controlador, carga de ensaio e limites de operação',key='machine_'+stamp[:12])
+        reviewed=st.checkbox('Conferi origem, orientação, escala e adequação da banda para este estudo',key='reviewed_'+stamp[:12])
+        scenario=None
+        with st.expander('Estudo opcional de redução de duração por modelo'):
+            enabled=st.checkbox('Incluir cenário de aumento de intensidade',key='enable_compression')
+            st.caption('Cenário adicional, dependente de expoente assumido e validação para o produto. A seleção por intensidade e a amplificação são decisões distintas; a curva principal permanece na intensidade medida.')
+            if enabled:
+                from vibration_scenarios import compression_factors
+                factor=st.number_input('Fator de redução do tempo C',min_value=1.,max_value=5.,value=2.,step=.5,key='compression_factor')
+                k=st.number_input('Expoente k assumido',min_value=.5,max_value=30.,value=2.,step=.5,key='compression_k')
+                factors=compression_factors(factor,k)
+                scenario=dict(factor=factor,k=k,**factors,proposed_duration_s=settings['selected_duration_s']/factor,
+                              proposed_grms_g=fit['recipe_grms']*factors['acceleration_multiplier'],
+                              damage_equivalence_claimed=False,experimental_validation_pending=True)
+                st.info(f"MODELO NÃO VALIDADO: {scenario['proposed_duration_s']:.3f} s, {scenario['proposed_grms_g']:.5f} g. Não demonstra equivalência de dano.")
+                st.latex(r'T_t=T_0/C,\quad G_t=G_0 C^{1/k},\quad S_t(f)=S_0(f)C^{2/k}')
+        pending=[]
+        if source!='Transporte em veículo':pending.append('Contexto não identificado como campanha de transporte.')
+        if not reviewed or not all(x.strip() for x in [route,justification,setup]):pending.append('Documentação ou revisão do responsável incompleta.')
+        if fullscale=='Não confirmada' and not demo:pending.append('Escala do CSV não confirmada.')
+        if not fit['passed']:pending.append('Erro de simplificação/edição acima do critério escolhido.')
+        if rails:pending.append('Há indícios de saturação na aquisição.')
+        if recording.metadata.get('format')=='MPUZ_RAW_LE_V2' and not recording.metadata.get('session_closed_verified'):
+            pending.append('V2 sem fechamento final: receita restrita aos prefixos verificados por CRC.')
+        state='DEMONSTRACAO' if demo else ('ESTUDO_PRELIMINAR' if pending else 'PROPOSTA_PARA_REVISAO_TECNICA')
+        st.info(f'Status da receita: {state}. A proposta documenta o perfil; a execução depende da verificação do conjunto mesa/carga/controlador.')
+        if pending:
+            for reason in pending:st.caption(reason)
+        context=dict(file=filename,source=source,input_stamp=stamp,fullscale_g=fullscale,route=route,justification=justification,
+                     machine_setup=setup,reviewed=reviewed,pending=pending,possible_saturation_count=rails,nominal_crop_s=[start,end],comparison_band_Hz=common)
+        payload,report=export_workflow(selected,profile,fit,recording,context,comparison,chosen,state,scenario)
+        st.download_button('Baixar receita PSD completa (ZIP)',payload,f'receita_psd_v5_{state.lower()}.zip','application/zip',key='recipe_zip')
+        st.caption('ZIP: tabela de breakpoints, PSD selecionada e global, blocos, segmentos, caudas, comparação, fontes e memória de cálculo. O CSV com duas colunas é genérico; conferir o formato do controlador.')
+        with st.expander('Método e premissas do TCC'):
+            st.markdown('''O trabalho transforma medições de transporte em parâmetros de ensaio para apoiar o projeto e a avaliação de embalagens: proteção insuficiente favorece avarias; reforço excessivo aumenta custo e consumo de material.
 
-**Tratamento:** preserva ordem e valores originais; converte unidade quando solicitado; remove a média para análise dinâmica. Não há suavização do sinal, remoção automática de picos ou reamostragem automática. Falhas de tempo bloqueiam a análise ou exigem modo exploratório explícito.
+**Seleção:** o perfil principal começa pelos 10% mais intensos do tempo coberto, ajustáveis pelo pesquisador. Grms por bloco na banda declarada; blocos inteiros, empates preservados. Essa é uma implementação própria de seleção em coleta contínua. Os 10% discutidos por Rissi são uma estimativa dos eventos retidos por gatilho e max-overwrite, e não o mesmo algoritmo.
 
-**PSD:** Welch com janela periódica Hann ou Hamming explicitamente escolhida, média aritmética em escala linear e remoção da média de cada segmento. A média dos segmentos representa apenas o trecho selecionado e coberto. Sobreposição de 50% é uma opção metodológica inicial, não requisito normativo. Segmentos longos melhoram espaçamento em frequência e reduzem o número de médias. A PSD não preserva a ordem temporal dos eventos; consulte RMS por intervalo.
+**PSD:** Welch em cada bloco e segmento independente. A média linear é ponderada pela duração coberta. Nenhum pico é removido automaticamente; caudas sem janela completa e interrupções são documentadas. Remover a média constante por janela não corrige mudanças de orientação, deriva ou calibração.
 
-**RMS:** o RMS temporal global, o RMS de intervalos com média local removida e o Grms integrado numa banda não são a mesma medida. Janelamento, trechos cobertos, remoção de média e banda precisam coincidir antes de exigir concordância. A integração da PSD experimental usa interpolação linear nos limites; perfis de referência usam integração de leis de potência entre breakpoints.
+**Breakpoints:** interpolação por leis de potência em eixos log-log; inclinação com 10·log₁₀ para PSD. O último slope fica vazio. A aproximação automática conserva área; uma edição manual mostra seu próprio Grms e erro, sem reescala silenciosa.
 
-**Receita senoidal:** centro da banda completa de 1/3 de oitava com maior integral de PSD, ou frequência definida pelo pesquisador; intensidade pelo RMS da banda local (padrão) ou pelo Grms de toda a faixa. A aceleração de pico é √2 vezes o RMS e o deslocamento pico a pico é calculado pela relação cinemática da senoide. Essa discretização é um critério do estudo, não uma exigência da ISO 2247. A receita derivada do percurso é simplificada e não declara conformidade. A ISO 2247:2000 é referência contextual para ensaios de embalagens em baixa frequência; seus métodos e requisitos de corpo de prova não são satisfeitos automaticamente por igualar um nível RMS.
+**Comparação:** todos os Grms da tabela usam a interseção das bandas das referências escolhidas. Forma e intensidade são medidas distintas. Mesmos Grms não garantem mesma resposta de produto/embalagem. A origem, edição e seleção de cada referência acompanham a exportação.
 
-**Fontes das curvas PSD:** ASTM D4728-06, Appendix X1, Table X1.1 (Truck / D4169 Assurance Level II); Table X1.3 (perfil reproduzido de ISO 13355). A segunda curva não confirma uma edição atual da ISO. ISTA 3E não foi incluída como referência independente porque sua transcrição ainda requer verificação documental. Consultar a edição adotada antes de afirmar conformidade.
+**Duração:** exposição nominal dos blocos selecionados, sem dupla contagem de sobreposição Welch. Um perfil de alta intensidade não recebe automaticamente toda a duração da viagem. Modelos de redução de tempo dependem de hipóteses e validação experimental.
 
-**Software:** [SciPy — Welch](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html). Similaridade ou proximidade de Grms não demonstra conformidade e não estabelece equivalência de dano.
-
-**Pendências de aquisição:** conferir firmware, frequência efetiva, escala, calibração, filtros, fixação e orientação. A triagem temporal não valida esses itens. Para o TCC, registrar contexto, veículo, carga, posição do sensor e trechos do percurso.''')
-        st.markdown('**Cenários opcionais:** compressão por intensidade usa C=T₀/Tₜ, Gₜ=G₀·C^(1/k) e PSDₜ=PSD₀·C^(2/k), com k assumido. A seleção por intensidade retira períodos e mantém a duração dos blocos restantes. As alternativas são independentes e não alegam equivalência de dano. Dois níveis são um agrupamento próprio por Grms na banda; não são a reprodução do SaverXware ou a síntese não gaussiana SVS.')
-        with st.expander('Referências, aplicação e limites de cada fonte'):
+**Escopo:** mesa aleatória controlada por PSD. Os resultados não atribuem equivalência a uma mesa senoidal, conformidade normativa ou redução comprovada de avarias. Um perfil da campanha não constitui norma regional.''')
             st.markdown(references_markdown())
-        st.download_button('Baixar parâmetros e diagnóstico',json.dumps(metadata,ensure_ascii=False,indent=2).encode(), 'parametros_analise.json','application/json')
-        csv_download('Baixar dados do trecho com média removida',pd.DataFrame({'time_s':t,'acceleration_original_g':x,'acceleration_demeaned_g':z}),'trecho_analisado.csv')
+        with st.expander('Parâmetros completos exportados'): st.json(report)
+
 
 if __name__=='__main__':main()
-

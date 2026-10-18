@@ -33,5 +33,28 @@ REFERENCES = [
 ]
 
 
+# Fontes incorporadas à seleção por intensidade e ao catálogo da versão 5.
+REFERENCES.extend([
+    dict(id='rissi2008', citation='RISSI, G. O.; SINGH, S. P.; BURGESS, G.; SINGH, J. Measurement and analysis of truck transport environment in Brazil. Packaging Technology and Science, 21(4), 231–246, 2008. DOI 10.1002/pts.797.',
+         sections='Metodologia e seleção antes da Figura 21; Figura 21/Tabela 4, p. 19 da cópia pública.',
+         supports='Referência brasileira e justificativa para examinar trechos de maior intensidade. Perfil vertical composto aproximado por digitalização.',
+         url='https://digitalcommons.calpoly.edu/it_fac/47/',
+         limits='Cópia identificada como anterior à revisão por pares. Os 10% são estimativa da retenção por gatilho/max-overwrite, não o algoritmo de ranking deste aplicativo. Pontos digitalizados não são tabela dos autores.'),
+    dict(id='korea2020', citation='PARK, J.; CHOI, S.; JUNG, H. M. Measurement and Analysis of Vibration Levels for Truck Transport Environment in Korea. Applied Sciences, 10(19), 6754, 2020. DOI 10.3390/app10196754.',
+         sections='Tabelas 8 e 9, pp. 15–16.', supports='Perfis por suspensão e classes de intensidade; tabela de breakpoints como parâmetro de ensaio.',
+         url='https://doi.org/10.3390/app10196754', limits='Veículos descarregados; seleção e composição próprias do estudo. A média ponderada do aplicativo não reproduz o método de conexão de pontos elevados dos autores.'),
+    dict(id='korea2024', citation='KIM, S.; HORVATH, L.; LEE, S.; LEE, S. Measurement and Analysis of Last-Mile Parcel Delivery Truck Vibration Levels in Korea. Applied Sciences, 14(8), 3245, 2024. DOI 10.3390/app14083245.',
+         sections='Tabela 3, p. 10.', supports='Exemplo de perfil composto com 17 breakpoints e influência de baixas frequências.',
+         url='https://doi.org/10.3390/app14083245', limits='Última milha em Seul, veículos e seleção específicos; não é padrão nacional universal.'),
+    dict(id='lansmont2016', citation='LANSMONT. ASTM D4169 Truck Profile Update Rationale, revisão de 22 set. 2016.',
+         sections='Tabela 2, p. 6; comparação histórica, p. 8.', supports='Curvas históricas de 2014 e níveis baixo/médio/alto de 2016, mantidos separados no catálogo.',
+         url='https://www.lansmont.com/sites/default/files/wp-content/uploads/2016/06/ASTM-D4169-Truck-Profile-Update-Rationale-Rev.-3-9-22-16.pdf', limits='Justificativa histórica; não comprova a edição normativa vigente. Níveis de 2014 não são as três intensidades da revisão de 2016.'),
+    dict(id='endaq', citation='HANLY, Steve. How to Develop a Vibration Test Standard (PSD) from Experimental Data. enDAQ.',
+         sections='Seleção de regimes, redução de breakpoints e comparação por resposta espectral.', supports='Fluxo medição → PSD → perfil simplificado e necessidade de examinar forma além de Grms.',
+         url='https://blog.endaq.com/how-to-develop-a-vibration-test-standard-psd-from-experimental-data', limits='Orientação técnica; não fornece equivalência universal de dano. Verificação VRS não está implementada nesta versão.'),
+])
+
+
+
 def references_markdown():
     return '\n\n'.join(f"- **{r['id']}** — {r['citation']} {r['sections']}\n  Aplicação: {r['supports']}\n  Limite: {r['limits']}" + (f"\n  Endereço: {r['url']}" if r['url'] else '') for r in REFERENCES)

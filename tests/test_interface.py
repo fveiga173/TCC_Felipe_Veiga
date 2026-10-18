@@ -1,77 +1,98 @@
-"""Teste funcional da interface Streamlit usando o AppTest oficial."""
+"""Fluxos completos da interface, incluindo uploads V2 e atualização do perfil."""
 from pathlib import Path
 import unittest
-try:
-    from streamlit.testing.v1 import AppTest
-    STREAMLIT_AVAILABLE=True
-except ModuleNotFoundError:
-    STREAMLIT_AVAILABLE=False
+import numpy as np
+from streamlit.testing.v1 import AppTest
 
 ROOT=Path(__file__).resolve().parents[1]
 
-@unittest.skipUnless(STREAMLIT_AVAILABLE,'Streamlit não está instalado neste ambiente.')
+
 class InterfaceTests(unittest.TestCase):
-    def test_demo_and_invalid_band(self):
+    def demo(self):
         at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
         self.assertFalse(at.exception)
         next(c for c in at.checkbox if c.label=='Usar demonstração sintética').check().run()
         self.assertFalse(at.exception)
-        self.assertGreaterEqual(len(at.tabs),3)
-        self.assertTrue(any('1 · Caracterizar percurso' in tab.label for tab in at.tabs))
-        self.assertTrue(any('2 · Definir receitas' in tab.label for tab in at.tabs))
-        self.assertTrue(any('DEMONSTRACAO' in i.value for i in at.info))
+        return at
+
+    def test_primary_delivery_default_band_and_invalid_band(self):
+        at=self.demo()
+        self.assertEqual(at.number_input(key='recipe_low').value,1.)
+        self.assertEqual(at.selectbox(key='selection_mode').value,'Alta intensidade')
+        self.assertEqual(at.number_input(key='high_percentage').value,10.)
+        self.assertEqual(at.tabs[0].label,'1 · Curva e breakpoints')
+        self.assertTrue(any('DEMONSTRACAO' in item.value for item in at.info))
+        self.assertEqual(at.session_state['_analysis']['settings']['covered_duration_s'],1000.)
         at.number_input(key='recipe_low').set_value(60.).run()
         self.assertFalse(at.exception)
         self.assertTrue(any('Banda inválida' in e.value for e in at.error))
-        at.number_input(key='recipe_low').set_value(3.).run()
-        at.selectbox(key='recipe_mode').set_value('linear').run()
-        self.assertFalse(at.exception)
+        at.number_input(key='recipe_low').set_value(1.).run()
         at.number_input(key='recipe_points').set_value(2).run()
         self.assertTrue(any('Limite de pontos' in w.value for w in at.warning))
 
-    def test_binary_upload_flow(self):
-        # AppTest não injeta uploads diretamente. Substituímos apenas a origem
-        # dos bytes; todo o parser, diagnóstico, cálculo e UI são executados.
+    def test_catalog_common_band_and_edit_modes(self):
+        at=self.demo()
+        at.multiselect(key='reference_ids').set_value(['iso13355_reproduced_2006','rissi2008_vertical_digitized']).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('3–50 Hz' in item.value for item in at.info))
+        before=at.session_state['_working_profile'].copy()
+        at.radio(key='profile_edit_mode').set_value('Inclinação (dB/oct)').run()
+        self.assertFalse(at.exception)
+        np.testing.assert_allclose(at.session_state['_working_profile'].psd_g2_per_Hz,before.psd_g2_per_Hz)
+        initial=next(i for i in at.number_input if i.label=='PSD do primeiro breakpoint (g²/Hz)')
+        initial.set_value(float(before.psd_g2_per_Hz.iloc[0]*2)).run()
+        self.assertFalse(at.exception)
+        np.testing.assert_allclose(at.session_state['_working_profile'].psd_g2_per_Hz,2*before.psd_g2_per_Hz)
+        at.button(key='restore_breakpoints').click().run()
+        np.testing.assert_allclose(at.session_state['_working_profile'].psd_g2_per_Hz,before.psd_g2_per_Hz)
+
+    def test_selection_and_optional_compression_do_not_change_main_intensity(self):
+        at=self.demo();selected=at.session_state['_working_profile'].copy()
+        at.checkbox(key='enable_compression').check().run()
+        self.assertFalse(at.exception)
+        at.number_input(key='compression_factor').set_value(5.).run()
+        self.assertFalse(at.exception)
+        np.testing.assert_allclose(at.session_state['_working_profile'].psd_g2_per_Hz,selected.psd_g2_per_Hz)
+        self.assertTrue(any('MODELO NÃO VALIDADO' in item.value for item in at.info))
+        at.selectbox(key='selection_mode').set_value('Todos os blocos').run()
+        self.assertFalse(at.exception)
+        self.assertFalse(at.session_state['_working_profile'].equals(selected))
+
+    def test_psd_cell_edit_updates_calculated_slope_and_blocks_stale_invalid_profile(self):
+        at=self.demo();before=at.session_state['_working_profile'].copy()
+        key=f"breakpoints_{at.session_state['_profile_seed']}_{at.session_state['_editor_generation']}"
+        at.session_state[key]={'edited_rows':{0:{'psd_g2_per_Hz':float(before.psd_g2_per_Hz.iloc[0]*2)}},'added_rows':[],'deleted_rows':[]}
+        at.run();self.assertFalse(at.exception)
+        after=at.session_state['_working_profile']
+        self.assertAlmostEqual(after.psd_g2_per_Hz.iloc[0],2*before.psd_g2_per_Hz.iloc[0])
+        self.assertNotEqual(after.slope_to_next_db_oct.iloc[0],before.slope_to_next_db_oct.iloc[0])
+        key=f"breakpoints_{at.session_state['_profile_seed']}_{at.session_state['_editor_generation']}"
+        at.session_state[key]={'edited_rows':{0:{'frequency_Hz':60.}},'added_rows':[],'deleted_rows':[]}
+        at.run();self.assertFalse(at.exception)
+        self.assertTrue(any('Perfil inválido' in e.value for e in at.error))
+        self.assertFalse(any(getattr(x,'label','')=='Baixar receita PSD completa (ZIP)' for x in at.get('download_button')))
+
+    def test_v2_incomplete_verified_prefix_is_accepted(self):
         script='''
 import sys, io, zlib
-sys.path.insert(0,ROOT)
+sys.path.insert(0, ROOT)
 import numpy as np
 import app
-fs=500;n=5000
-a=np.rint(8192*(1+.2*np.sin(2*np.pi*10*np.arange(n)/fs))).astype('<i2')
-raw=a.tobytes()
-report=f"status=INCOMPLETE\\nformat=MPUZ_RAW_LE_V1\\ntime_basis=sample_index_nominal\\nsamples={n}\\nsample_rate_nominal_hz=500\\nlsb_per_g=8192\\ncrc32={zlib.crc32(raw)}\\nerror_code=0\\nfifo_overflows=0\\ndlpf_cfg=2\\naccel_range_g=4\\nduration_arduino_ms=10000\\nsaturation_samples=0\\nstatus=OK\\n".encode()
+fs=1000;n=40000
+x=8192*(1+.1*np.sin(2*np.pi*8*np.arange(n)/fs))
+raw=x.astype('<i2').tobytes()
+report=(f"format=MPUZ_RAW_LE_V2\\ntime_basis=sample_index_nominal_per_segment\\nsample_rate_nominal_hz=1000\\nlsb_per_g=8192\\naccel_range_g=4\\nwho_am_i=112\\nsample_rate_divider=0\\ngyro_dlpf_cfg=1\\naccel_dlpf_cfg=0\\ngyro_fchoice_b=0\\nstatus=INCOMPLETE\\nfifo_overflows_so_far=1\\nsegment=1,0,20000,500,20400,12,{zlib.crc32(raw[:40000])}\\nsegment=2,20000,40000,20500,40400,0,{zlib.crc32(raw)}\\n").encode()
 class Upload(io.BytesIO):
  def __init__(self,data,name):super().__init__(data);self.name=name
-app.st.file_uploader=lambda label,**kw: Upload(report,'TEST.TXT') if 'diagnóstico' in label else Upload(raw,'TEST.BIN')
+app.st.file_uploader=lambda label,**kw: (Upload(report,'TEST.TXT') if 'diagnóstico' in label else (Upload(raw,'TEST.BIN') if 'sensor' in label else None))
 app.main()
 '''.replace('ROOT',repr(str(ROOT)))
         at=AppTest.from_string(script,default_timeout=30).run()
         self.assertFalse(at.exception)
-        self.assertTrue(any('CRC32 conferidos' in e.value for e in at.success))
-        self.assertTrue(any('ESTUDO_PRELIMINAR' in e.value for e in at.info))
-        # Uma declaração de contexto não deve, sozinha, validar a proposta.
-        next(s for s in at.selectbox if s.label=='Contexto da aquisição').set_value('Transporte em veículo').run()
-        self.assertFalse(at.exception)
-        self.assertTrue(any('ESTUDO_PRELIMINAR' in e.value for e in at.info))
+        self.assertTrue(any('CRC32 conferidos' in item.value for item in at.success))
+        self.assertEqual(len(at.session_state['_analysis']['blocks']),4)
+        self.assertTrue(any('INCOMPLETE' in item.value for item in at.markdown))
+        self.assertTrue(any('ESTUDO_PRELIMINAR' in item.value for item in at.info))
 
-    def test_scenarios_compression_and_selection(self):
-        at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
-        next(c for c in at.checkbox if c.label=='Usar demonstração sintética').check().run()
-        at.checkbox(key='enable_scenarios').check().run()
-        self.assertFalse(at.exception)
-        at.radio(key='scenario_choice').set_value('Compressão por aumento de intensidade').run()
-        self.assertFalse(at.exception)
-        at.number_input(key='compression_factor').set_value(5.).run()
-        at.number_input(key='compression_k').set_value(4.).run()
-        self.assertFalse(at.exception)
-        self.assertTrue(any('pendente de validação experimental' in e.value for e in at.info))
-        at.radio(key='scenario_choice').set_value('Seleção de alta intensidade').run()
-        self.assertFalse(at.exception)
-        at.selectbox(key='epoch_rule').set_value('Limiar manual de Grms').run()
-        at.number_input(key='epoch_threshold').set_value(100.).run()
-        self.assertFalse(at.exception)
-        self.assertTrue(any('Nenhum bloco acima' in e.value for e in at.warning))
 
 if __name__=='__main__':unittest.main()
-

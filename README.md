@@ -1,165 +1,150 @@
-# Análise de vibração de transporte — versão 4.0
+# Curva PSD e breakpoints de ensaio — versão 5.0
 
-Aplicativo Streamlit para o TCC de Felipe Veiga: aquisição de baixo custo,
-caracterização de vibrações no piso do veículo e elaboração de um guia prático
-reproduzível de parâmetros de ensaio. Código e memória de cálculo em português.
+Aplicativo Streamlit do TCC de Felipe Veiga. A entrega principal é uma tabela
+**frequência (Hz) × PSD (g²/Hz)**, com inclinação para o próximo ponto, curva
+reconstruída, Grms, duração representada e comparação com perfis publicados.
 
-O aplicativo não avalia danos, não certifica embalagens, não prevê vida útil e
-não comanda a mesa. Equivalência de dano exige validação experimental para o produto/situação.
+O protocolo apoia a definição de solicitações para desenvolver e avaliar
+embalagens. O foco é a mesa de vibração aleatória controlada por PSD.
 
-## Uso no Streamlit
+## Usar
 
-`app.py` permanece na raiz e `main` é a referência. Uma aplicação conectada a
-esses parâmetros recebe a atualização pelo fluxo GitHub → Streamlit. Não é
-necessário instalar Python para usar a aplicação hospedada. Se necessário,
-consultar os logs ou reiniciar a aplicação no painel do Streamlit.
+1. Envie BIN e TXT correspondentes, ou CSV com `time_s` e um eixo de aceleração.
+2. Confira contexto, banda e processamento. O início é **1–50 Hz**.
+3. O perfil principal começa pelos **10% mais intensos** do tempo coberto pelos
+   blocos. O percentual é ajustável; é possível usar todos os blocos ou seu
+   complemento de menor intensidade.
+4. Edite a tabela por PSD ou por inclinação. Curva, Grms, erro e comparação
+   acompanham a tabela atual. Também é possível importar duas colunas CSV.
+5. Escolha referências, confira a banda comum e registre as justificativas.
+6. Exporte o CSV de breakpoints e o ZIP com a memória de cálculo.
 
-Os uploads são processados em memória e não são adicionados ao GitHub nem
-enviados a serviços adicionais. O cache da análise por blocos é limitado a duas
-entradas por processo, usa SHA256 da origem e não grava em disco. Hospedagem e
-controle de acesso são administrados separadamente do código.
+A demonstração sintética tem 1000 s a 1000 Hz e aumento de intensidade nos
+últimos 100 s. Seus resultados são identificados como `DEMONSTRACAO`.
 
-## Fluxo em três etapas
+## Seleção por intensidade
 
-1. **Caracterizar percurso:** leitura, diagnóstico, sinal temporal, RMS por
-   intervalo, PSD e comparação com referências na mesma banda.
-2. **Definir receitas:** perfil PSD de referência e, opcionalmente, análise de
-   níveis e cenários de duração. Receita senoidal exploratória em aba própria,
-   com limites explícitos e sem compressão de tempo.
-3. **Guia e exportação:** parâmetros, justificativas, critérios, fontes e hashes.
+Blocos iniciais de 10 s, sem sobreposição, classificados pelo Grms integrado na
+mesma banda da receita. São incluídos os blocos de maior Grms até atingir o
+percentual de tempo solicitado; empates numéricos permanecem juntos. A fração
+real pode exceder a solicitada, por isso as duas são informadas.
 
-Demonstração sintética: 60 s a 1000 Hz, componentes de 8 e 35 Hz e mudança
-de intensidade aos 40 s. Saídas rotuladas DEMONSTRACAO.
+A PSD do grupo é a média **linear ponderada pela duração coberta**. Não é uma
+média aritmética de Grms, um percentil por frequência nem um envelope de picos.
+As amostras não são concatenadas através de interrupções.
 
-## Aquisição BIN + TXT
+Os 10% de Rissi et al. (2008) são uma estimativa dos eventos retidos pelo
+sistema de gatilho/max-overwrite. A seleção deste aplicativo é um procedimento
+próprio para registros contínuos, com indicador e algoritmo explícitos.
 
-Verifica status final OK, ausência de erro/transbordamento, quantidade de bytes,
-CRC32, conversão e configuração. Aceita prefixos do monitor serial; o último
-status do TXT prevalece.
+Períodos suaves permanecem nos dados de origem e na caracterização global. A
+receita representa somente os blocos selecionados; ela não recebe automaticamente
+a duração de toda a viagem. Efeitos cumulativos e resposta do produto exigem
+consideração própria.
 
-| Perfil suportado | Configuração exigida no TXT |
+## PSD e breakpoints
+
+- Welch: Hann periódica inicial, 4 s, 50% de sobreposição; Hamming disponível.
+- Média constante removida por janela; PSD unilateral em g²/Hz, sem zero-padding.
+- Janelas nunca atravessam blocos de classificação ou segmentos da aquisição.
+- Tempo coberto = N/fs; sobreposição Welch não duplica exposição. Caudas são registradas.
+- Grms experimental: raiz da integral do interpolante linear da PSD na banda.
+- Breakpoints: interpolação por leis de potência em log-log e integral analítica.
+- A aproximação automática conserva a área e adiciona pontos por desvio espectral
+  na grade de avaliação. Pontos podem estar entre bins, sem criar informação
+  espectral adicional. O critério inicial é 1 dB, com até 80 pontos.
+- Se o limite de pontos não atende ao erro escolhido, o aplicativo informa a
+  falha. Esse é um critério numérico do estudo, não tolerância da mesa.
+- Edições manuais têm seu próprio erro e Grms, sem reescala silenciosa.
+- Slope da linha atual para a próxima: `10*log10(S2/S1)/log2(f2/f1)`.
+  A última linha fica sem inclinação. Não usar 20 para PSD.
+
+Nyquist e filtros configurados não comprovam banda calibrada. A remoção da média
+não corrige mudanças de orientação ou calibração.
+
+## Referências disponíveis
+
+17 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
+contexto, seleção e limitações:
+
+| Família | Perfis | Banda original |
+|---|---:|---|
+| D4169 histórico 2016: baixo/médio/alto | 3 | 1–200 Hz |
+| D4169 histórico 2014: I/II/III | 3 | 1–200 Hz |
+| Coreia 2020: suspensão e intensidade | 4 | 1–250 Hz |
+| Coreia 2024: última milha | 1 | 1–200 Hz |
+| D4728-06: exemplos por suspensão/carga | 4 | 1–100 Hz |
+| ISO 13355 reproduzido na D4728-06 | 1 | 3–200 Hz |
+| Rissi 2008: composto vertical digitalizado | 1 | 1–375 Hz adotados |
+
+A comparação numérica usa **uma única banda comum a todas as referências
+selecionadas**, sem extrapolar ou normalizar curvas. Se ISO for selecionada
+em um estudo de 1–50 Hz, a comparação passa a 3–50 Hz. São informados Grms na
+banda comum, razão de intensidade e distância descritiva de forma em dB.
+
+A curva de Rissi é uma aproximação gráfica, não tabela numérica dos autores:
+Grms digitalizado de 0,6217 g em 1–375 Hz versus 0,6284 g publicado; a banda
+exata da integral original não está explicitada. Em 1–50 Hz, cerca de 0,3357 g.
+A proximidade global não valida cada ordenada. Ver metadados de digitalização.
+
+## BIN/TXT V1 e V2
+
+| Formato | Política |
 |---|---|
-| Legado v4, MPU-6050 | 500 Hz, ±4 g, 8192 contagens/g, DLPF_CFG=2; WHO_AM_I ausente ou 0x68 |
-| v6, MPU-6500 | WHO_AM_I=112/0x70, 1000 Hz, ±4 g, 8192 contagens/g, divider=0, gyro_dlpf_cfg=1, accel_dlpf_cfg=0, gyro_fchoice_b=0 |
+| V1 | Exige fechamento OK, sem erro/overflow, tamanho e CRC final válidos. Não contém mapa para recuperar lacunas. |
+| V2 / firmware v7 | Confere cada prefixo/segmento e seus limites. Aceita REVIEW com segmentos válidos. Sem fechamento final, usa somente o prefixo coberto por checkpoints válidos. |
 
-Formato `MPUZ_RAW_LE_V1`: um int16 little-endian de Z por amostra.
-Tempo `sample_index_nominal`: índice n/fs, sem medição de jitter do sensor.
-Estimativa N/T do Arduino não substitui a taxa nominal automaticamente.
-CRC e configuração dos registradores não são calibração metrológica.
+Configurações suportadas: MPU-6500, 1000 Hz nominais, ±4 g, 8192 contagens/g,
+accel DLPF 0, gyro DLPF 1, FCHOICE 0, divisor 0; e legado MPU-6050 500 Hz/DLPF 2.
+Z int16 little-endian, 2 bytes por amostra. CRC não é calibração.
 
-CSV exige `time_s` e aceleração. Metadados comentados são lidos; coleta
-incompleta, erro ou overflow bloqueia parâmetros. CSV não revalida CRC do BIN.
+O estado original do TXT permanece explícito. Cauda sem checkpoint não entra
+na análise. CRC incorreto ou limites inconsistentes bloqueiam o processamento.
+Um registro repetido de segmento adota a última linha completa, com aviso e
+nova conferência de CRC e limites, como no protocolo de recuperação v7.
 
-## PSD de referência
+A base temporal é nominal por segmento. O índice acumulado é usado apenas
+como posição na sequência de dados; não representa pausas reais nem permite
+contar perdas exatas. Não se ajusta automaticamente a taxa pelo relógio Arduino.
 
-- Welch por trecho: Hann periódica padrão, Hamming periódica opcional.
-- Inicial: 4 s, 50% de sobreposição, média removida por janela, PSD unilateral
-  g²/Hz, média aritmética em escala linear. São escolhas do projeto.
-- Sem zero-padding. Espaçamento fs/N e ENBW da janela são documentados.
-- Média de PSDs ponderada pelo tempo coberto. Trechos descontínuos não são
-  concatenados antes da FFT; intervalos [início,fim) não se sobrepõem.
-- Tempo = N_coberto/fs; sobreposição Welch não duplica exposição; caudas são
-  excluídas e documentadas. Partida não entra no tempo pleno.
-- Grms = sqrt(integral da PSD na banda), sem extrapolação de frequência.
-- Simplificação por erro espectral com preservação da área do interpolante;
-  linear ou log-log com integração analítica, incluindo expoente -1.
-- Erro em dB nos bins e oito subintervalos entre bins é critério de
-  representação do projeto, não tolerância normativa de controle da mesa.
+O BIN permanece int16 e é convertido em pequenos blocos, sem construir um vetor
+de tempo ou um DataFrame de toda a coleta. Foi verificado um arquivo sintético
+de 172,8 MB; recursos e limites da hospedagem ainda influenciam o uso real.
+Uploads são mantidos na sessão de análise; não são gravados no repositório.
 
-Banda inicial 3–50 Hz é faixa de estudo; Nyquist, filtro configurado e ausência
-de overflow não comprovam banda calibrada ou ausência de aliasing. Remover a
-média não corrige mudanças de orientação/gravidacional durante a coleta.
+CSV: tempos positivos crescentes, variação local até 1% em relação à mediana;
+lacunas maiores que 1,5× a mediana separam segmentos. Não há ordenação, remoção
+de linhas ou reamostragem automática. A triagem temporal não valida o sensor.
 
-## Níveis e cenários de duração
+## Exportações
 
-Ativar **Analisar perfis por intensidade e cenários de duração** na receita PSD.
-Usa os trechos e a mesma banda/janela/taxa da receita. Blocos começam em 10 s,
-sem sobreposição entre blocos; caudas sem janela completa são registradas.
-A referência dos cenários é recalculada na cobertura desses blocos.
+- `perfil_psd.csv`: frequência, PSD e slope para a próxima linha.
+- `perfil_freq_psd.csv`: somente as duas colunas para adaptação ao controlador.
+- PSD selecionada e PSD de todos os blocos cobertos.
+- Blocos classificados, índices das amostras, durações, segmentos e caudas.
+- Comparação e referências escolhidas, com valores e proveniência.
+- `receita.json`: aquisição, seleção, processamento, versão, hashes e contexto.
+- Memória de cálculo e bibliografia.
 
-Grms por bloco é integrado na banda. RMS temporal, pico amostrado, fator de
-crista e curtose usam o sinal com média local removida na banda registrada
-inteira. Não acionam exclusão automática de eventos.
+Não há formato proprietário de controlador implementado. A imagem dos gráficos
+pode ser obtida pelo botão de câmera do Plotly.
 
-P80 inicial é quantil EMPÍRICO de Grms ponderado pelo tempo: baixos <= limiar,
-altos > limiar. Empates ficam juntos; a proporção obtida pode diferir de 80/20.
-Há limiar manual opcional; nenhum limiar publicado é aplicado automaticamente.
+## Estudo opcional de duração
 
-| Alternativa | Intensidade | Duração |
-|---|---|---|
-| Referência sem redução | PSD média dos blocos | Toda cobertura dos blocos |
-| Dois níveis sem redução | PSD média de cada grupo | Cobertura de cada grupo |
-| Compressão por intensidade | PSD ×C^(2/k) | T_original/C |
-| Seleção de alta intensidade | PSD média dos blocos mantidos | Soma de suas durações, sem amplificação |
+Um cenário adicional permite `C=T0/Tt`, `Gt=G0*C^(1/k)` e `St= S0*C^(2/k)`,
+com k assumido. Fica separado da receita principal, identificado como modelo
+não validado. Não demonstra equivalência de dano; não transforma seleção de
+registros em compressão equivalente.
 
-Alternativas independentes: não combinamos descarte com amplificação. Dois
-níveis não preservam cronologia e não são síntese SVS ou reprodução do
-algoritmo de espectros de probabilidade do SaverXware.
-
-```
-C = T_original / T_ensaio
-G_ensaio = G_original * C**(1/k)
-PSD_ensaio(f) = PSD_original(f) * C**(2/k)
-```
-
-k=2 é hipótese, não medido pelo sensor. Para C=5: Grms ×sqrt(5), PSD ×5;
-frequências e forma preservadas. C=1–5 segue recomendação HISTÓRICA de Kipp,
-sem garantia de equivalência, norma atual ou capacidade da bancada.
-Sensibilidade a k=2,3,4,5,6 e ao k informado é exportada.
-
-Índice sum(Tj*Grms_j**k) compara a exposição hipotética mantida para k=2,4,6;
-não é dano ou vida útil e não contempla resposta espectral/mecanismo de falha.
-Toda saída recebe **Proposta de ensaio baseada em modelo, pendente de validação
-experimental**. Ver FUNDAMENTACAO.md.
-
-## Receita senoidal exploratória
-
-Centro de 1/3 de oitava com maior integral de PSD, ou frequência manual.
-Intensidade pelo RMS local (padrão) ou concentração do Grms da faixa inteira.
-Pico = sqrt(2)*RMS; deslocamento p-p = 2*a_pico*g/(2πf)². Sem compressão de
-tempo. RMS igual não comprova resposta ou dano equivalente. ISO 2247:2000 é
-referência contextual, sem declaração de conformidade automática.
-
-## Estados e exportação
-
-- DEMONSTRACAO: dados sintéticos.
-- ESTUDO_PRELIMINAR: documentação ou critério pendente, incluindo saturação
-  ou erro de representação acima do escolhido.
-- PROPOSTA_PARA_REVISAO_TECNICA: documentação declarada e critérios atendidos;
-  não autoriza execução ou comprova calibração, dano ou conformidade.
-
-Todos os cenários: `experimental_validation_pending=true`,
-`damage_equivalence_claimed=false`, `machine_authorization=false`.
-Conferir força, curso, velocidade, aceleração, carga e controlador da mesa.
-
-ZIP de referência: perfil genérico CSV, PSD, trechos, subfaixas, JSON, memória
-e referências. ZIP de cenários: alternativas, sequências, blocos, exclusões,
-sensibilidade, índice hipotético e guia com hipóteses/fontes/hashes.
-Formato genérico: conferir unidades/interpolação antes de importar na mesa.
-
-## Desenvolvimento
-
-`app.py`: caracterização; `psd_recipe.py`/`recipe_ui.py`: receita PSD;
-`vibration_scenarios.py`/`scenario_ui.py`: níveis e cenários;
-`references.py`/`FUNDAMENTACAO.md`: fontes e limites;
-`fixed_frequency.py`/`freq_recipe_ui.py`: proposta senoidal.
+## Executar e verificar
 
 ```bash
 python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
 python -m streamlit run app.py
+python -m unittest discover -s tests -v
 ```
 
-Testes de integrais, RMS, potência, cobertura, percentis, CRC e fluxo AppTest
-não substituem validação experimental. Versões efetivas acompanham a exportação.
-
-## Referências
-
-Eagleton (1995); Wallin/CETEA (2008); Kipp/Dantas (2009); Shire/Shires,
-resumo traduzido (2012; original referenciado DOI 10.1002/pts.915); Dunno (2016);
-ASTM D4728-06; Rouillard et al. (2021), DOI 10.1002/pts.2563; documentação SciPy.
-Identificação detalhada: FUNDAMENTACAO.md e exportações.
-
-Curvas: ASTM D4728-06 X1.1 (Truck) e ISO 13355 reproduzida em X1.3 da mesma
-ASTM. Não verifica edição atual da ISO; proximidade de Grms não é conformidade.
-ISTA 3E não é adicionada como curva independente sem transcrição verificada.
+`app.py` permanece na raiz e `main` continua sendo a referência para uma
+aplicação Streamlit já conectada ao repositório. Ver `VALIDACAO.md` e
+`FUNDAMENTACAO.md`. Módulos científicos da v4 foram preservados para
+compatibilidade; a interface atual concentra-se na receita PSD.

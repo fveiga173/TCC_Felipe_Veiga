@@ -1,77 +1,82 @@
-# Fundamentação e decisões da versão 4.0
+# Fundamentação e decisões da versão 5.0
 
-Produto do TCC: guia prático reproduzível de aquisição, processamento,
-caracterização e definição de parâmetros. Sensor rigidamente fixado ao piso do
-veículo, com orientação/contexto documentados. Medições manuais ou em mochila
-são exploratórias. Não executa ensaios de paletes, avalia dano, certifica
-embalagens ou modifica normas.
+A entrega do TCC é a curva de ensaio definida por tabela Hz × g²/Hz,
+inclinações, Grms e duração, a partir de medições próprias e comparação
+rastreável com normas e campanhas anteriores.
 
-## Fontes efetivamente consultadas
+## Relação com o problema industrial
 
-| Fonte | Localização | Aplicação |
+A proteção insuficiente pode favorecer avarias; reforço excessivo aumenta
+custo e consumo de materiais. Medir o ambiente e justificar o ensaio apoia o
+projeto da embalagem. O programa não verifica dano de produto ou economia de
+material: essas conclusões dependem de experimentação específica.
+
+## Fontes e contribuição
+
+| Fonte | Aplicação | Limite relevante |
 |---|---|---|
-| Eagleton, dissertação de mestrado, 1995 | 4.1, pp. 59–88; B.1–B.3, pp. 154–158; C.1, pp. 163–166 | Configuração, PSD por viagem, Hamming, verificação do conjunto |
-| Wallin, Desenvolvendo um padrão de vibração randômica, CETEA v.20 n.1, 2008 | pp. 2–3 e 5–6 | Perfis em níveis, durações e simplificação para controlador |
-| Dantas, tradução adaptada de Kipp, Equivalência do ensaio de vibração, v.21 n.2, 2009 | pp. 3–5 | Modelo k=2, exposição e recomendação histórica 5:1 |
-| Shire, Compressão do tempo em ensaios de vibração randômica, v.24 n.1, 2012 | pp. 1–5 | k como hipótese e distribuição de intensidade |
-| Dunno, Técnicas para reduzir o tempo de simulação de vibrações em laboratório, v.28 n.2, 2016 | pp. 6–10, Tabelas 1–3 | Comparação de amplificação, faixas e síntese não estacionária |
-| ASTM D4728-06, edição fornecida | 8.2–8.4, 10.2–10.5, Appendix X1 | Dados representativos, controle, tempo pleno, cautela com compressão |
-| Rouillard et al., 2021, DOI 10.1002/pts.2563 | Discussão das simulações laboratoriais | Representatividade local e limites dos perfis genéricos |
-| SciPy, Welch/get_window | Parameters e Notes, consulta 12/10/2026 | Janelas periódicas, densidade unilateral e normalização |
+| Eagleton, 1995, cap. 4 e apêndices B/C | Aquisição → PSD → perfil para controlador; Hamming e verificação do conjunto | Disparo, intervalo morto e sobrescrita; não replica nossa coleta contínua |
+| ASTM D4728-06 fornecida, 8.2–8.4 e 10.2–10.5 | Representatividade, controle, partida e duração | Edição identificada; igualdade de Grms não certifica o ensaio |
+| Rissi et al., 2008, DOI 10.1002/pts.797 | Referência brasileira e foco em registros intensos | Os 10% são estimativa de retenção por gatilho/max-overwrite; curva aproximada por digitalização |
+| Park/Choi/Jung, 2020, DOI 10.3390/app10196754 | Perfis por suspensão/intensidade e tabelas de breakpoints | Composição própria por pontos elevados; veículos descarregados |
+| Kim/Horvath/Lee/Lee, 2024, DOI 10.3390/app14083245 | Perfil composto de última milha com 17 breakpoints | Seul e veículos/seleção específicos |
+| Lansmont, justificativa D4169, rev. 22/09/2016 | Perfis históricos baixo/médio/alto e comparação com 2014 | Não comprova texto normativo vigente; manter famílias separadas |
+| Rouillard et al., 2021, DOI 10.1002/pts.2563 | Variabilidade e representatividade das simulações | Não fornece um expoente universal de dano |
+| Wallin, CETEA 20(1), 2008 | Diferentes níveis de intensidade e duração | Limiares Amgen não são universais |
+| Dantas/Kipp, CETEA 21(2), 2009; Shire/Shires, 24(1), 2012 | Discussão de duração e expoente assumido | O original DOI 10.1002/pts.915 é citado pela tradução; não se afirma leitura integral do original |
+| Dunno, CETEA 28(2), 2016 | Métodos de redução e diferença de resposta/dano | Resultados específicos de produto/montagem; algoritmo SaverXware não integralmente fornecido |
+| Hanly/enDAQ | Construção e simplificação de perfis; examinar forma além de Grms | Orientação técnica; VRS não implementada nesta versão |
+| SciPy, documentação de Welch/get_window | Normalização espectral e janela periódica explícita | Parâmetros iniciais são escolhas do estudo |
 
-Referências completas em `references.py` e nas exportações. O original Shires,
-DOI 10.1002/pts.915, é referência do resumo traduzido consultado; não se afirma
-leitura do original integral. A tradução identifica Shire na capa e Shires na
-referência final; a diferença é registrada.
+Fontes completas em `references.py`; contexto de cada curva em
+`data/psd_catalog.json`. Os PDFs consultados não são redistribuídos no repositório.
 
-## Limites das fontes
+## Decisões implementadas
 
-Eagleton usa disparo, intervalo morto e sobrescrita; seus registros não
-representam uma coleta contínua completa. Integral da PSD = g²; RMS = sua raiz.
-Zero-padding de 500 para 512 muda a grade, sem adicionar informação. Filtro
-digital posterior não elimina aliasing da aquisição. Hamming/1 s/0% nesta
-aplicação não replica filtros e hardware do EDR.
+1. Banda inicial de estudo: 1–50 Hz; aquisição nominal permanece 1000 Hz no MPU-6500.
+2. Classificação por Grms na banda, em blocos iniciais de 10 s. Seleção inicial
+   dos 10% superiores por tempo coberto, mantendo blocos inteiros e empates.
+   Percentual e duração efetivos são sempre apresentados.
+3. A implementação de ranking não é o algoritmo de Rissi nem uma reprodução
+   dos métodos de conexão de pontos elevados dos artigos coreanos.
+4. Welch independente por bloco e segmento: Hann ou Hamming periódicas,
+   nperseg fixo, densidade unilateral e média aritmética linear.
+5. Média de PSDs ponderada por duração coberta. Nunca média aritmética de Grms.
+6. Caudas excluídas e documentadas; nenhuma janela cruza uma lacuna. Sobreposição
+   espectral não duplica a duração representada.
+7. Breakpoints interpolados por leis de potência em log-log. Seleção adaptativa
+   de pontos na grade 8x; pode usar frequências entre bins, sem alegar nova
+   resolução. Grms preservado na aproximação automática.
+8. O próximo ponto é escolhido pelo desvio antes do ajuste de área, evitando
+   que o ajuste global esconda a falta de um pico estreito na aproximação.
+9. Edição por PSD ou slope: níveis, curva, métricas e comparação são recalculados.
+   Edições manuais não são normalizadas para forçar o Grms de origem.
+10. Comparação em interseção única para todos os perfis escolhidos. Razão de
+    Grms descreve intensidade; RMS do erro em dB sem nível médio descreve forma.
+11. Perfil intenso recebe a duração dos blocos selecionados, não da viagem inteira.
+12. O cenário opcional de duração usa hipóteses explícitas: C=T0/Tt, amplitude
+    multiplicada por C^(1/k), PSD por C^(2/k). Não estabelece dano equivalente.
+13. O V2 permite analisar prefixos verificados, mantendo REVIEW/INCOMPLETE e
+    limites de segmentos. Falha de integridade não é convertida em OK.
 
-Wallin oferece o caso 80/20; limiares 0,04 e 0,167 Grms pertencem à Amgen.
-Não são critérios universais de ruído/movimento. Aqui P80 é quantil temporal
-ponderado de Grms na banda; empates ficam juntos e a proporção real é exibida.
+## Limites da interpretação
 
-Shire/Shires discute um modelo semelhante a fadiga, sem confirmar k=2 para
-todos os conjuntos. PSD/Grms não identificam o expoente ou mecanismo de falha.
-sum(T*Grms^k) é apenas comparação hipotética escalar da exposição.
+A PSD média não mantém ordem temporal, impactos individuais ou distribuição de
+amplitudes. Um processo não gaussiano também pode ter PSD; calcular PSD não
+exige remover seus extremos. O programa não aplica filtro automático de picos.
 
-Dunno encontrou dano excessivo ao elevar 0,195 para aproximadamente 0,44 Grms
-durante 3 h. Sequências de 4 h 08 min e 2 h 42 min corresponderam aos danos dos
-refrigeradores; 11 min e 2 min não produziram os danos esperados. São resultados
-visuais daquele produto/montagem/viagem. Armazenou 8 h 09 min de uma viagem
-de 15 h com sobrescrita. A tradução não define integralmente o algoritmo do
-SaverXware: 90%→99% não é simplesmente pegar os 10% maiores Grms de outro arquivo.
+Mesmo Grms não garante mesma resposta de uma embalagem. A intensidade por
+bloco também não identifica, sozinha, os mecanismos de dano do produto.
+Trechos suaves podem contribuir por duração ou ressonância. A seleção e os
+modelos devem ser justificados com o objetivo e os resultados da campanha.
 
-Síntese SVS usa distribuição estatística para controlar o sinal da mesa.
-Dois perfis não são síntese não gaussiana e não garantem distribuição de
-amplitudes. Gaussianidade é do processo temporal, não da PSD; uma PSD pode
-caracterizar processos não gaussianos.
+Rissi é uma aproximação gráfica identificada como tal, com Grms global próximo
+mas não idêntico ao publicado. Sua largura de banda de cálculo informada de
+1,875 Hz limita interpretações finas da forma abaixo de 3 Hz. O perfil de uma
+campanha não constitui norma de uma região.
 
-## Convenções de implementação
-
-1. Mesmos fs, nperseg, janela, overlap e banda em todos os blocos.
-2. PSD média em escala linear com peso de duração; não média aritmética de Grms.
-3. Caudas documentadas; trechos descontínuos não concatenados.
-4. Duração N_coberto/fs, sem contar sobreposição Welch duas vezes.
-5. Referência dos cenários baseada na cobertura dos blocos, distinta da receita.
-6. Compressão C=T0/Tt: amplitude ×C^(1/k), PSD ×C^(2/k), frequência preservada.
-   Não comprime o eixo do arquivo nem reamostra a aceleração.
-7. Seleção mantém tempos e intensidades dos grupos restantes, sem compensação
-   automática. Tempo retirado acompanha cada saída.
-8. Fator numérico da simplificação conserva área; não é aumento físico do ensaio.
-9. Picos amostrados, sem reconstrução por interpolação. Fator de crista não
-   dispara exclusão automática nem cria ensaio de impacto no escopo do TCC.
-10. Senoide permanece exploratória e não recebe a compressão da vibração aleatória.
-
-## Ressalva nas saídas
-
-**Proposta de ensaio baseada em modelo, pendente de validação experimental.**
-
-Estados indicam documentação/critérios de cálculo. Não afirmam calibração,
-conformidade, dano equivalente ou autorização da mesa. Verificar capacidade com
-carga e comparar experimentalmente resposta/dano para alegar equivalência.
+Calibração, resposta do sensor, fixação, orientação, frequência efetiva, capacidade
+da mesa com carga e avaliação de avarias exigem verificações próprias. O foco
+atual é a mesa aleatória controlada por PSD; não há equivalência atribuída à mesa
+senoidal. A conclusão do TCC deve distinguir cálculo, funcionamento do sistema,
+reprodução física em laboratório e eventual avaliação da embalagem.

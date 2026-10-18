@@ -6,7 +6,7 @@ import zipfile
 import zlib
 import numpy as np
 import pandas as pd
-from psd_recipe import build_recipe, load_binary, spectral_area
+from psd_recipe import VERSION, build_recipe, load_binary, spectral_area
 from vibration_scenarios import analyze_epochs, build_plans, compression_factors, export_plans, weighted_percentile
 
 
@@ -96,7 +96,7 @@ class ScenarioTests(unittest.TestCase):
         data,meta=export_plans(result,{'sha256_input':'synthetic'},'DEMONSTRACAO',['Dados sintéticos'],'compressao')
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             saved=json.loads(z.read('cenarios.json'))
-            self.assertEqual(saved['version'],'4.0.0')
+            self.assertEqual(saved['version'],VERSION)
             self.assertEqual(saved['settings']['basquin_exponent_k'],4.)
             self.assertFalse(saved['damage_equivalence_claimed'])
             self.assertTrue(saved['experimental_validation_pending'])
