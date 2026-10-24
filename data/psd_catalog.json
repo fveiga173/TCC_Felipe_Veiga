@@ -2411,6 +2411,52 @@
         "comparison_caveat": "A aquisicao original usa gatilho e max-overwrite, retendo eventos mais intensos; os autores estimam os 10% superiores da viagem. Nao tratar como media continua de toda a rota nem como norma brasileira.",
         "purpose": "Comparacao bibliografica exploratoria; nenhuma alteracao no aplicativo ou no repositorio."
       }
+    },
+    {
+      "id": "hungary_borocz_singh_2018_digitized",
+      "name": "Hungria — Böröcz e Singh 2018 — vans / perfil proposto (digitalizado)",
+      "kind": "digitized_proposed_test_profile",
+      "source": {
+        "title": "Tese de Böröcz: Figura 3.7, perfil Kompozit 2 – Javasolt spektrum",
+        "author": "Péter Böröcz; figura atribuída a Böröcz e Singh SP (2018)",
+        "year": 2023,
+        "url": "https://real-d.mtak.hu/1587/7/boroczp_88_23_doktori_mu.pdf"
+      },
+      "locator": "Figura 3.7, p.44; Tabela 3.5, p.45",
+      "context": "Vans de entrega; perfil vertical composto proposto como envoltória dos níveis superiores entre medições. Não equivale à seleção dos 10% mais intensos.",
+      "method": "Digitalização aproximada da curva magenta; máscara de cor e ajuste robusto de 12 vértices em eixos logarítmicos. Sem normalização para coincidir com Grms publicado. Casas decimais não indicam precisão metrológica.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        1.959,
+        3.026,
+        6.958,
+        8.932,
+        12.811,
+        15.791,
+        29.051,
+        48.805,
+        69.494,
+        98.083,
+        200.0
+      ],
+      "psd_g2_per_Hz": [
+        0.00110693,
+        0.00840477,
+        0.00831123,
+        0.00057691,
+        0.00058536,
+        0.0118292,
+        0.01200257,
+        0.00011608,
+        0.0001165,
+        0.00057778,
+        0.00060502,
+        4.845e-05
+      ],
+      "grms_full_reported_g": 0.388,
+      "grms_full_calculated_g": 0.3844690153631633,
+      "limitations": "Pontos aproximados extraídos de imagem JPEG; proximidade de Grms não valida cada ordenada. Perfil proposto, não PSD bruta de um único veículo."
     }
   ]
 }
