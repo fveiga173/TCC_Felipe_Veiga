@@ -64,7 +64,7 @@ não corrige mudanças de orientação ou calibração.
 
 ## Referências disponíveis
 
-17 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
+18 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
 contexto, seleção e limitações:
 
 | Família | Perfis | Banda original |
@@ -76,6 +76,7 @@ contexto, seleção e limitações:
 | D4728-06: exemplos por suspensão/carga | 4 | 1–100 Hz |
 | ISO 13355 reproduzido na D4728-06 | 1 | 3–200 Hz |
 | Rissi 2008: composto vertical digitalizado | 1 | 1–375 Hz adotados |
+| Hungria: Böröcz e Singh 2018, perfil proposto digitalizado | 1 | 1–200 Hz |
 
 A comparação numérica usa **uma única banda comum a todas as referências
 selecionadas**, sem extrapolar ou normalizar curvas. Se ISO for selecionada
@@ -148,3 +149,5 @@ python -m unittest discover -s tests -v
 aplicação Streamlit já conectada ao repositório. Ver `VALIDACAO.md` e
 `FUNDAMENTACAO.md`. Módulos científicos da v4 foram preservados para
 compatibilidade; a interface atual concentra-se na receita PSD.
+
+A tabela inclui a linha **Este teste — PSD dos blocos selecionados** do arquivo carregado, na mesma banda das referências. Hungria: 12 breakpoints aproximados da Figura 3.7 (p.44) da tese de Böröcz; cerca de 0,38447 Grms reconstruídos versus 0,388 publicado, sem normalização.
