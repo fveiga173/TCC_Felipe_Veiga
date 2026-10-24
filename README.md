@@ -64,7 +64,7 @@ não corrige mudanças de orientação ou calibração.
 
 ## Referências disponíveis
 
-18 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
+19 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
 contexto, seleção e limitações:
 
 | Família | Perfis | Banda original |
@@ -151,3 +151,6 @@ aplicação Streamlit já conectada ao repositório. Ver `VALIDACAO.md` e
 compatibilidade; a interface atual concentra-se na receita PSD.
 
 A tabela inclui a linha **Este teste — PSD dos blocos selecionados** do arquivo carregado, na mesma banda das referências. Hungria: 12 breakpoints aproximados da Figura 3.7 (p.44) da tese de Böröcz; cerca de 0,38447 Grms reconstruídos versus 0,388 publicado, sem normalização.
+
+## Versão 6: perfil autoral padrão
+A abertura exibe TCC Veiga 2026 - Serra Gaucha, exatamente pelos breakpoints fornecidos pelo autor. O perfil é a primeira referência do catálogo e acompanha o programa. Uploads de novos BIN/TXT ou CSV usam o fluxo de análise e já podem comparar com o TCC. O perfil congelado é reconstruído da tabela; os BIN/TXT pessoais não são redistribuídos. Fonte, seleção e limitações ficam visíveis.
