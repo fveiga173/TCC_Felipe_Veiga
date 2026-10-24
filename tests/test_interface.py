@@ -11,9 +11,17 @@ class InterfaceTests(unittest.TestCase):
     def demo(self):
         at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
         self.assertFalse(at.exception)
-        next(c for c in at.checkbox if c.label=='Usar demonstração sintética').check().run()
+        at.session_state['_test_demo']=True
+        at.run()
         self.assertFalse(at.exception)
         return at
+
+    def test_builtin_profile_opens_without_upload(self):
+        at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any(h.value=='TCC Veiga 2026 - Serra Gaucha' for h in at.header))
+        self.assertTrue(any(m.label=='Grms do perfil incorporado' for m in at.metric))
+        self.assertTrue(any('TCC Veiga' in str(frame.value) for frame in at.dataframe))
 
     def test_primary_delivery_default_band_and_invalid_band(self):
         at=self.demo()
