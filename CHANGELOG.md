@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 5.0.1 — 24/10/2026
+
+- Linha Este teste na comparação numérica e identificação no gráfico, respeitando banda comum.
+- Perfil húngaro proposto por Böröcz e Singh (2018), digitalizado da tese, com proveniência e ressalvas.
+
+
 ## 5.0.0 — 18/10/2026
 
 - Fluxo principal centrado na tabela de breakpoints, curva PSD, Grms e duração.
