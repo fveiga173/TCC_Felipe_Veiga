@@ -131,16 +131,37 @@ class WorkflowTests(unittest.TestCase):
         self.assertAlmostEqual(spectral_area(profile.frequency_Hz,profile.psd_g2_per_Hz,'log-log'),spectral_area(s['frequency'],s['psd']),places=10)
 
     def test_catalog_reference_rms_and_common_band(self):
-        catalog=load_catalog();self.assertEqual(len(catalog),17)
+        catalog=load_catalog();self.assertEqual(len(catalog),18)
         leaf=next(r for r in catalog if r['id']=='korea_2020_leaf_spring_high')
         self.assertAlmostEqual(np.sqrt(spectral_area(leaf['frequency_Hz'],leaf['psd_g2_per_Hz'],'log-log')),.472810,places=5)
         f=np.linspace(1,50,197);p=np.full(len(f),.01);selected=dict(frequency=f,psd=p)
         profile=breakpoint_table([1,50],[.01,.01])
         refs=[r for r in catalog if r['id'] in ['iso13355_reproduced_2006','rissi2008_vertical_digitized']]
         table,band=compare_profiles(selected,profile,refs)
+        self.assertEqual(table.iloc[0].reference_id,'this_test_selected')
+        self.assertAlmostEqual(table.iloc[0].shape_distance_db,0,places=12)
+        self.assertAlmostEqual(table.iloc[0].proposed_to_reference_grms,1,places=12)
         self.assertEqual(band,[3.,50.])
         np.testing.assert_allclose(table.proposed_grms_common_g,np.sqrt(.47))
         self.assertTrue((table.common_low_Hz==3).all())
+
+    def test_measurement_row_without_references_uses_measured_psd(self):
+        selected=dict(frequency=np.array([1.,10.,50.]),psd=np.array([.01,.01,.01]))
+        profile=breakpoint_table([1,50],[.04,.04])
+        table,band=compare_profiles(selected,profile,[])
+        self.assertEqual(band,[1.,50.])
+        self.assertEqual(len(table),1)
+        self.assertAlmostEqual(table.iloc[0].reference_grms_common_g,.7)
+        self.assertAlmostEqual(table.iloc[0].proposed_to_reference_grms,2.)
+        self.assertAlmostEqual(table.iloc[0].shape_distance_db,0.,places=10)
+
+    def test_hungary_digitized_reference_integral_and_provenance(self):
+        row=next(r for r in load_catalog() if r['id']=='hungary_borocz_singh_2018_digitized')
+        self.assertEqual(len(row['frequency_Hz']),12)
+        self.assertEqual(row['frequency_Hz'][0],1.)
+        self.assertEqual(row['frequency_Hz'][-1],200.)
+        self.assertAlmostEqual(np.sqrt(spectral_area(row['frequency_Hz'],row['psd_g2_per_Hz'],'log-log')),.38447,places=4)
+        self.assertIn('Digitalização',row['method'])
 
     def test_export_keeps_selection_reference_provenance_and_current_table(self):
         rec=recording();a=analyze_recording(rec,1,40,10,2);s=select_intensity(a,25)
