@@ -1,4 +1,4 @@
-"""Curva PSD e breakpoints para ensaios de transporte — v5.0."""
+"""Curva PSD e breakpoints para ensaios de transporte — v5.0.1."""
 import hashlib
 import io
 import json
@@ -22,7 +22,7 @@ def download_csv(label,frame,name,key=None):
 def psd_figure(selected,profile,references=()):
     fig=go.Figure()
     fig.add_trace(go.Scatter(x=selected['frequency'],y=selected['all_psd'],name='Todos os blocos analisáveis',line=dict(color='#9aa8b7',width=1.2)))
-    fig.add_trace(go.Scatter(x=selected['frequency'],y=selected['psd'],name='PSD dos blocos selecionados',line=dict(color='#2677b8',width=1.8)))
+    fig.add_trace(go.Scatter(x=selected['frequency'],y=selected['psd'],name='Este teste — PSD dos blocos selecionados',line=dict(color='#2677b8',width=1.8)))
     grid=np.geomspace(profile.frequency_Hz.iloc[0],profile.frequency_Hz.iloc[-1],2000)
     fig.add_trace(go.Scatter(x=grid,y=interpolate(profile.frequency_Hz,profile.psd_g2_per_Hz,grid,'log-log'),
                              name='Curva de ensaio proposta',line=dict(color='#e68126',width=2.7)))
@@ -240,7 +240,8 @@ def main():
             st.caption('Distância de forma: RMS do erro em dB após retirar o nível médio, em 512 frequências logarítmicas. Compara forma; a razão de Grms compara intensidade. As curvas não são normalizadas.')
             download_csv('Baixar comparação na banda comum',comparison,'comparacao_referencias.csv',key='download_comparison')
         elif not chosen: st.info('Escolha referências para comparar os perfis na banda comum.')
-        st.caption('Perfis históricos mantêm a edição identificada. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
+        st.caption('Perfis históricos mantêm a edição identificada. Hungria e Rissi são perfis digitalizados, não tabelas numéricas originais. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
+        st.caption('Este teste representa a PSD dos blocos selecionados do arquivo carregado; a curva proposta é sua aproximação por breakpoints.')
         catalog_details(chosen)
     with tabs[2]:
         a,b,c,d=st.columns(4)
