@@ -108,16 +108,57 @@ def editor(selected,tolerance,max_points,seed):
     return proposed,fit
 
 
+def show_builtin_profile(catalog):
+    """Abre a tabela autoral congelada; não apresenta reconstrução como PSD bruta."""
+    baseline=catalog[0]
+    st.header(baseline['name'])
+    profile=breakpoint_table(baseline['frequency_Hz'],baseline['psd_g2_per_Hz'])
+    from psd_recipe import spectral_area
+    grms=float(np.sqrt(spectral_area(profile.frequency_Hz,profile.psd_g2_per_Hz,'log-log')))
+    a,b,c=st.columns(3)
+    a.metric('Grms do perfil incorporado',f'{grms:.5f} g')
+    b.metric('Breakpoints',len(profile))
+    c.metric('Banda do perfil',f'{profile.frequency_Hz.iloc[0]:g}–{profile.frequency_Hz.iloc[-1]:g} Hz')
+    st.caption('Perfil autoral incorporado. Curva reconstruída da tabela exportada; não é uma nova análise do BIN. Para comparar uma nova medição, envie seu BIN + TXT ou CSV na lateral.')
+    by_id={r['id']:r for r in catalog[1:]}
+    ids=st.multiselect('Referências para comparar com o perfil incorporado',list(by_id),
+        default=['korea_2024_last_mile','rissi2008_vertical_digitized','hungary_borocz_singh_2018_digitized'],
+        format_func=lambda k:by_id[k]['name'],key='builtin_references')
+    refs=[by_id[k] for k in ids]
+    fig=go.Figure()
+    grid=np.geomspace(profile.frequency_Hz.iloc[0],profile.frequency_Hz.iloc[-1],2000)
+    values=interpolate(profile.frequency_Hz,profile.psd_g2_per_Hz,grid,'log-log')
+    fig.add_trace(go.Scatter(x=grid,y=values,name=baseline['name'],line=dict(color='#e68126',width=3)))
+    fig.add_trace(go.Scatter(x=profile.frequency_Hz,y=profile.psd_g2_per_Hz,name='Breakpoints',mode='markers',marker=dict(color='#e68126',size=6)))
+    for ref in refs:
+        lo=max(float(grid[0]),ref['frequency_Hz'][0]);hi=min(float(grid[-1]),ref['frequency_Hz'][-1])
+        if lo<hi:
+            f=np.geomspace(lo,hi,500)
+            fig.add_trace(go.Scatter(x=f,y=interpolate(ref['frequency_Hz'],ref['psd_g2_per_Hz'],f,'log-log'),name=ref['name'],line=dict(dash='dot')))
+    fig.update_layout(xaxis=dict(type='log',title='Frequência (Hz)'),yaxis=dict(type='log',title='PSD (g²/Hz)'),height=540,legend=dict(orientation='h',y=-.2))
+    st.plotly_chart(fig,width='stretch',key='builtin_psd_plot')
+    selected=dict(frequency=grid,psd=values)
+    comparison,band=compare_profiles(selected,profile,refs)
+    comparison.loc[comparison.reference_id=='this_test_selected','reference']=baseline['name']+' — reconstruído'
+    comparison.loc[comparison.reference_id=='this_test_selected','kind']='builtin_reconstructed'
+    st.caption(f'Comparação na banda comum {band[0]:g}–{band[1]:g} Hz, sem normalização das amplitudes.')
+    st.dataframe(comparison[['reference','reference_grms_common_g','proposed_to_reference_grms','shape_distance_db']].rename(columns={'reference':'Referência','reference_grms_common_g':'Grms na banda comum (g)','proposed_to_reference_grms':'TCC / referência','shape_distance_db':'Distância de forma (dB)'}),hide_index=True)
+    with st.expander('Tabela de breakpoints do perfil incorporado'):
+        st.dataframe(profile,hide_index=True)
+    download_csv('Baixar perfil incorporado (CSV)',profile,'TCC_Veiga_2026_Serra_Gaucha.csv',key='download_builtin_profile')
+    catalog_details([baseline,*refs])
+
+
 def main():
     st.set_page_config(page_title='Veiga | Curva PSD e breakpoints',page_icon='📈',layout='wide')
     st.title('Curva PSD e breakpoints de ensaio')
-    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v5.0')
+    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.0')
     catalog=load_catalog()
     with st.sidebar:
-        st.header('Medição')
+        st.header('Comparar novo teste')
         uploaded=st.file_uploader('CSV ou BIN do sensor',type=['csv','bin'])
         report_file=st.file_uploader('TXT do diagnóstico (obrigatório com BIN)',type=['txt'])
-        demo=st.checkbox('Usar demonstração sintética',value=False)
+        demo=bool(st.session_state.get('_test_demo',False))  # fixture interna de testes; produção usa apenas uploads
         source=st.selectbox('Contexto da aquisição',['Teste manual / funcional','Transporte em veículo','Mesa vibratória','Outro'])
         unit=st.selectbox('Unidade do CSV',['g','m/s²'])
         fullscale=st.selectbox('Escala confirmada do CSV (g)',['Não confirmada',2,4,8,16])
@@ -151,9 +192,7 @@ def main():
                     recording=read_csv_recording(data,axis,unit)
                     st.session_state['_loaded_recording']=recording;st.session_state['_loaded_stamp']=stamp
         else:
-            st.info('Envie uma medição ou ative a demonstração. A entrega é a tabela Hz × g²/Hz que define a curva do ensaio.')
-            with st.expander(f'Conhecer as {len(catalog)} curvas de referência disponíveis'):
-                catalog_details(catalog)
+            show_builtin_profile(catalog)
             return
     except (ValueError,KeyError,TypeError,UnicodeError) as exc:
         st.error(f'Falha ao ler aquisição: {exc}');return
@@ -225,7 +264,7 @@ def main():
     with tabs[1]:
         st.subheader('Curva proposta e perfis publicados')
         by_id={r['id']:r for r in catalog}
-        ids=st.multiselect('Curvas de referência',list(by_id),default=['d4169_2016_medium','korea_2020_leaf_spring_high','rissi2008_vertical_digitized'],
+        ids=st.multiselect('Curvas de referência',list(by_id),default=['tcc_veiga_2026_serra_gaucha','d4169_2016_medium','korea_2020_leaf_spring_high','rissi2008_vertical_digitized'],
                            format_func=lambda k:by_id[k]['name'],key='reference_ids')
         chosen=[by_id[k] for k in ids]
         try: comparison,common=compare_profiles(selected,profile,chosen)
