@@ -23,21 +23,24 @@ def curve_band(f,p,low,high,mode='log-log'):
 
 def compare_profiles(selected,profile,references):
     """Todas as linhas usam a mesma interseção, inclusive a PSD medida."""
-    if not references: return pd.DataFrame(),None
     low=max(float(selected['frequency'][0]),float(profile.frequency_Hz.iloc[0]),
-            max(float(r['frequency_Hz'][0]) for r in references))
+            max((float(r['frequency_Hz'][0]) for r in references), default=float(selected['frequency'][0])))
     high=min(float(selected['frequency'][-1]),float(profile.frequency_Hz.iloc[-1]),
-             min(float(r['frequency_Hz'][-1]) for r in references))
+             min((float(r['frequency_Hz'][-1]) for r in references), default=float(selected['frequency'][-1])))
     if high<=low: raise ValueError('Não há banda comum entre o perfil e todas as referências escolhidas.')
     observed_area=spectral_area(*curve_band(selected['frequency'],selected['psd'],low,high,'linear'))
     proposed_area=spectral_area(*curve_band(profile.frequency_Hz,profile.psd_g2_per_Hz,low,high),'log-log')
     grid=np.geomspace(low,high,512)
     proposed=interpolate(profile.frequency_Hz,profile.psd_g2_per_Hz,grid,'log-log')
     rows=[]
-    for r in references:
+    measured = dict(id='this_test_selected', name='Este teste — PSD dos blocos selecionados',
+                    kind='measured_selected', frequency_Hz=selected['frequency'],
+                    psd_g2_per_Hz=selected['psd'], interpolation='linear')
+    for r in [measured, *references]:
+        mode = 'linear' if r['kind'] == 'measured_selected' else 'log-log'
         ff,pp=r['frequency_Hz'],r['psd_g2_per_Hz']
-        area=spectral_area(*curve_band(ff,pp,low,high),'log-log')
-        expected=interpolate(ff,pp,grid,'log-log')
+        area=spectral_area(*curve_band(ff,pp,low,high,mode),mode)
+        expected=interpolate(ff,pp,grid,mode)
         delta=10*np.log10(proposed/expected)
         rows.append(dict(reference_id=r['id'],reference=r['name'],kind=r['kind'],
                          common_low_Hz=low,common_high_Hz=high,
