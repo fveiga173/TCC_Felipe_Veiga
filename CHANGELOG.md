@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 6.0.0 — 24/10/2026
+
+- Perfil TCC Veiga 2026 - Serra Gaucha abre por padrão sem upload.
+- Perfil autoral como primeira referência, com tabela congelada e proveniência.
+- Upload de novos testes mantém comparação com o perfil incorporado.
+
+
 ## 5.0.1 — 24/10/2026
 
 - Linha Este teste na comparação numérica e identificação no gráfico, respeitando banda comum.
