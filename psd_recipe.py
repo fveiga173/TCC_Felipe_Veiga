@@ -19,7 +19,7 @@ import pandas as pd
 from scipy.signal import welch, get_window
 from references import REFERENCES, references_markdown
 
-VERSION = '5.0.1'
+VERSION = '6.0.0'
 
 
 def installed_version(package):
