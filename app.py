@@ -49,6 +49,8 @@ def catalog_details(references):
             st.write(source.get('edition_note',''))
             st.write(r.get('context',''))
             if r.get('method'): st.write(r['method'])
+            if r.get('limitations'): st.caption(r['limitations'])
+            if r.get('figure5_aliases_note'): st.caption(r['figure5_aliases_note'])
             st.markdown(f"[Fonte consultada]({source['url']})")
             st.caption(f"Banda original: {r['frequency_Hz'][0]:g}–{r['frequency_Hz'][-1]:g} Hz. Grms publicado na banda original: {r.get('grms_full_reported_g') or 'não informado'} g. Não usar esse valor global como Grms de 1–50 Hz.")
             st.dataframe(breakpoint_table(r['frequency_Hz'],r['psd_g2_per_Hz']),hide_index=True,height=230)
@@ -152,7 +154,7 @@ def show_builtin_profile(catalog):
 def main():
     st.set_page_config(page_title='Veiga | Curva PSD e breakpoints',page_icon='📈',layout='wide')
     st.title('Curva PSD e breakpoints de ensaio')
-    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.0')
+    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.1')
     catalog=load_catalog()
     with st.sidebar:
         st.header('Comparar novo teste')
@@ -279,7 +281,7 @@ def main():
             st.caption('Distância de forma: RMS do erro em dB após retirar o nível médio, em 512 frequências logarítmicas. Compara forma; a razão de Grms compara intensidade. As curvas não são normalizadas.')
             download_csv('Baixar comparação na banda comum',comparison,'comparacao_referencias.csv',key='download_comparison')
         elif not chosen: st.info('Escolha referências para comparar os perfis na banda comum.')
-        st.caption('Perfis históricos mantêm a edição identificada. Hungria e Rissi são perfis digitalizados, não tabelas numéricas originais. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
+        st.caption('Os perfis da Figura 5 de Rouillard são digitalizações históricas limitadas ao trecho visível, não tabelas normativas originais. Perfis históricos mantêm a edição identificada. Hungria e Rissi são perfis digitalizados, não tabelas numéricas originais. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
         st.caption('Este teste representa a PSD dos blocos selecionados do arquivo carregado; a curva proposta é sua aproximação por breakpoints.')
         catalog_details(chosen)
     with tabs[2]:
