@@ -179,7 +179,7 @@ def show_builtin_profile(catalog):
 def main():
     st.set_page_config(page_title='Veiga | Curva PSD e breakpoints',page_icon='📈',layout='wide')
     st.title('Curva PSD e breakpoints de ensaio')
-    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.2')
+    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.3')
     catalog=load_catalog()
     with st.sidebar:
         st.header('Comparar novo teste')
