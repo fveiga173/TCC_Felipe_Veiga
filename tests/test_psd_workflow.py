@@ -131,7 +131,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertAlmostEqual(spectral_area(profile.frequency_Hz,profile.psd_g2_per_Hz,'log-log'),spectral_area(s['frequency'],s['psd']),places=10)
 
     def test_catalog_reference_rms_and_common_band(self):
-        catalog=load_catalog();self.assertEqual(len(catalog),26)
+        catalog=load_catalog();self.assertEqual(len(catalog),39)
         leaf=next(r for r in catalog if r['id']=='korea_2020_leaf_spring_high')
         self.assertAlmostEqual(np.sqrt(spectral_area(leaf['frequency_Hz'],leaf['psd_g2_per_Hz'],'log-log')),.472810,places=5)
         f=np.linspace(1,50,197);p=np.full(len(f),.01);selected=dict(frequency=f,psd=p)
