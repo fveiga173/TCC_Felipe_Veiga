@@ -1,4 +1,5 @@
 """Curva PSD e breakpoints para ensaios de transporte — v5.0.1."""
+import html
 import hashlib
 import io
 import json
@@ -39,6 +40,25 @@ def psd_figure(selected,profile,references=()):
                       yaxis=dict(type='log',title='PSD (g²/Hz)'),height=530,margin=dict(t=20,b=25),
                       legend=dict(orientation='h',yanchor='top',y=-.17),hovermode='x unified')
     return fig
+
+
+def render_psd_plot(fig, key, config=None):
+    """Gráfico com altura própria e legenda independente em três colunas."""
+    palette=['#636efa','#EF553B','#00cc96','#ab63fa','#FFA15A','#19d3f3',
+             '#FF6692','#B6E880','#FF97FF','#FECB52']
+    entries=[]
+    for i,trace in enumerate(fig.data):
+        color=trace.line.color or trace.marker.color or palette[i % len(palette)]
+        trace.update(line_color=color)
+        name=html.escape(str(trace.name))
+        dash='dotted' if trace.line.dash and trace.line.dash!='solid' else 'solid'
+        swatch=(f'<span style="width:10px;height:10px;border-radius:50%;background:{color};flex-shrink:0"></span>'
+                if trace.mode=='markers' else
+                f'<span style="width:25px;border-top:2px {dash} {color};flex-shrink:0"></span>')
+        entries.append(f'<div style="display:flex;gap:8px;align-items:center;min-width:0;padding:5px 2px">{swatch}<span style="overflow-wrap:anywhere">{name}</span></div>')
+    fig.update_layout(showlegend=False,height=650,margin=dict(t=25,b=65,l=65,r=25))
+    st.plotly_chart(fig,width='stretch',key=key,config=config or {})
+    st.markdown('<div aria-label="Legenda das curvas PSD" style="max-height:220px;overflow-y:auto;padding:8px 12px;border:1px solid rgba(128,128,128,.25);border-radius:6px;font-size:12px;line-height:1.35"><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:18px">'+''.join(entries)+'</div></div>',unsafe_allow_html=True)
 
 
 def catalog_details(references):
@@ -138,7 +158,7 @@ def show_builtin_profile(catalog):
             f=np.geomspace(lo,hi,500)
             fig.add_trace(go.Scatter(x=f,y=interpolate(ref['frequency_Hz'],ref['psd_g2_per_Hz'],f,'log-log'),name=ref['name'],line=dict(dash='dot')))
     fig.update_layout(xaxis=dict(type='log',title='Frequência (Hz)'),yaxis=dict(type='log',title='PSD (g²/Hz)'),height=540,legend=dict(orientation='h',y=-.2))
-    st.plotly_chart(fig,width='stretch',key='builtin_psd_plot')
+    render_psd_plot(fig,key='builtin_psd_plot')
     selected=dict(frequency=grid,psd=values)
     comparison,band=compare_profiles(selected,profile,refs)
     comparison.loc[comparison.reference_id=='this_test_selected','reference']=baseline['name']+' — reconstruído'
@@ -263,7 +283,7 @@ def main():
         b.metric('Grms dos blocos selecionados',f'{fit["input_grms"]:.5f} g')
         c.metric('Tempo representado no nível pleno',f'{settings["selected_duration_s"]:.3f} s')
         d.metric('Breakpoints',len(profile))
-        st.plotly_chart(psd_figure(selected,profile),width='stretch',key='main_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'curva_psd_breakpoints','scale':2}})
+        render_psd_plot(psd_figure(selected,profile),key='main_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'curva_psd_breakpoints','scale':2}})
         st.write(f"**Seleção efetiva: {settings['selected_duration_percentage']:.2f}% do tempo coberto**, {settings['selected_blocks']} de {settings['total_blocks']} blocos. Duração mantida dos blocos selecionados; sem aumento automático de intensidade.")
         if not fit['passed']: st.warning(f"Limite de pontos ou edição atual não atende ao erro escolhido: {fit['max_error_db']:.2f} dB > {tolerance:g} dB. Ajuste a tabela ou a simplificação.")
         st.caption(f"Erro máximo na grade: {fit['max_error_db']:.3f} dB · diferença de área: {fit['area_difference_percent']:+.3f}%. São critérios numéricos do estudo, não tolerâncias de controle da mesa.")
@@ -276,7 +296,7 @@ def main():
         chosen=[by_id[k] for k in ids]
         try: comparison,common=compare_profiles(selected,profile,chosen)
         except ValueError as exc: st.error(str(exc));comparison=pd.DataFrame();common=None
-        st.plotly_chart(psd_figure(selected,profile,chosen),width='stretch',key='reference_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'comparacao_psd_referencias','scale':2}})
+        render_psd_plot(psd_figure(selected,profile,chosen),key='reference_psd_plot',config={'toImageButtonOptions':{'format':'png','filename':'comparacao_psd_referencias','scale':2}})
         if common:
             st.info(f'Comparação numérica na mesma banda para todas as curvas: {common[0]:g}–{common[1]:g} Hz. Grms globais publicados aparecem nos detalhes das fontes.')
             if common!=[low,high]: st.caption('A faixa foi reduzida à interseção das referências escolhidas; não foram inventados valores fora da cobertura.')
