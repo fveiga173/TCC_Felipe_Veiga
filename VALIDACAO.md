@@ -85,3 +85,10 @@ calibrar o sensor, certificar o ensaio ou comprovar equivalência de dano.
 A reprodução física e a capacidade da mesa com a carga requerem verificação
 experimental própria. A disponibilidade hospedada depende da aplicação
 Streamlit conectada à branch main e de seus recursos.
+
+## Revisão em 1–200 Hz — 25/10/2026
+TEST014 original: 319 segmentos e CRC32 33734267 verificados. Limpeza exploratória refeita em 1–200 Hz, parâmetros descritos no catálogo e script tools/reprocess_200hz.py. Derivado: 10970000 amostras, CRC32 3000089839, todos os segmentos lidos com sucesso pelo leitor V2; 1097 blocos de 10 s e 110 selecionados (1100 s, 10,02735%).
+
+PSD selecionada: 0,2998385440087272 Grms. Perfil: 96 pontos, 1–200 Hz, 0,29983854400872734 Grms, erro máximo 0,9543407686163927 dB, diferença de área desprezível (~4,4e-14%). Valores nominais; checagens computacionais não são calibração metrológica.
+
+Controle com o BIN recortado anterior na nova banda: 0,2954555799137413 Grms; a revisão final inclui mudança de cortes e de banda. A abertura sem upload e a tabela exibem 0,29984 g e 1–200 Hz. 45 testes automatizados passaram; adicionalmente foi verificada a abertura com o novo catálogo. O perfil anterior de 1–50 Hz permanece em data/history.
