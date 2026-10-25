@@ -64,7 +64,7 @@ não corrige mudanças de orientação ou calibração.
 
 ## Referências disponíveis
 
-26 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
+39 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
 contexto, seleção e limitações:
 
 | Família | Perfis | Banda original |
@@ -160,3 +160,7 @@ Sete digitalizações manuais (56 pontos) adicionais, com edição e limites vis
 
 ## Revisão 6.2 — banda 1–200 Hz
 O perfil incorporado foi reprocessado a partir do TEST014 original, incluindo limpeza exploratória e seleção dos 10% refeitas na banda de 1–200 Hz. Grms 0,299838544 g; 96 breakpoints; 10970 s retidos e 1100 s selecionados. O limite padrão e máximo da análise é 200 Hz (ou Nyquist se menor). O perfil anterior de 1–50 Hz permanece em data/history, fora do catálogo ativo. O script tools/reprocess_200hz.py permite reproduzir com os arquivos brutos locais, que não são publicados. A banda de cálculo não constitui validação metrológica do sensor.
+
+## Revisão 6.3 — Rissi por operação
+
+Treze perfis verticais das Figuras 7–19 acrescentados ao composto já existente. Fonte, figura, contexto e divergências globais declarados em `data/rissi_2008/LEIA-ME.md`. Aproximações gráficas; não tabelas originais nem normas.
