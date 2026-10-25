@@ -131,7 +131,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertAlmostEqual(spectral_area(profile.frequency_Hz,profile.psd_g2_per_Hz,'log-log'),spectral_area(s['frequency'],s['psd']),places=10)
 
     def test_catalog_reference_rms_and_common_band(self):
-        catalog=load_catalog();self.assertEqual(len(catalog),19)
+        catalog=load_catalog();self.assertEqual(len(catalog),26)
         leaf=next(r for r in catalog if r['id']=='korea_2020_leaf_spring_high')
         self.assertAlmostEqual(np.sqrt(spectral_area(leaf['frequency_Hz'],leaf['psd_g2_per_Hz'],'log-log')),.472810,places=5)
         f=np.linspace(1,50,197);p=np.full(len(f),.01);selected=dict(frequency=f,psd=p)
@@ -162,6 +162,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(row['frequency_Hz'][-1],200.)
         self.assertAlmostEqual(np.sqrt(spectral_area(row['frequency_Hz'],row['psd_g2_per_Hz'],'log-log')),.38447,places=4)
         self.assertIn('Digitalização',row['method'])
+
+    def test_rouillard_historical_digitizations_are_scoped(self):
+        rows=[r for r in load_catalog() if r['id'].endswith('_rouillard_digitized')]
+        self.assertEqual(len(rows),7)
+        self.assertEqual(sum(len(r['frequency_Hz']) for r in rows),56)
+        for r in rows:
+            self.assertEqual(r['kind'],'historical_digitized_test_profile')
+            self.assertIsNone(r['grms_full_reported_g'])
+            self.assertAlmostEqual(np.sqrt(spectral_area(r['frequency_Hz'],r['psd_g2_per_Hz'],'log-log')),r['grms_full_calculated_g'])
+            self.assertIn('recorte',r['limitations'])
 
     def test_export_keeps_selection_reference_provenance_and_current_table(self):
         rec=recording();a=analyze_recording(rec,1,40,10,2);s=select_intensity(a,25)
