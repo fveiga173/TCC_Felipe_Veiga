@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 6.1.0 — 25/10/2026
+
+- Sete perfis históricos digitalizados da Figura 5 de Rouillard et al. (2021), com 56 pontos e rastreabilidade por pixels.
+- Catálogo com 26 perfis; limites visíveis sem extrapolação; notas de incerteza na interface.
+
+
 ## 6.0.0 — 24/10/2026
 
 - Perfil TCC Veiga 2026 - Serra Gaucha abre por padrão sem upload.
