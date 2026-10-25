@@ -72,7 +72,7 @@ def catalog_details(references):
             if r.get('limitations'): st.caption(r['limitations'])
             if r.get('figure5_aliases_note'): st.caption(r['figure5_aliases_note'])
             st.markdown(f"[Fonte consultada]({source['url']})")
-            st.caption(f"Banda original: {r['frequency_Hz'][0]:g}–{r['frequency_Hz'][-1]:g} Hz. Grms publicado na banda original: {r.get('grms_full_reported_g') or 'não informado'} g. Não usar esse valor global como Grms de 1–50 Hz.")
+            st.caption(f"Banda original: {r['frequency_Hz'][0]:g}–{r['frequency_Hz'][-1]:g} Hz. Grms publicado na banda original: {r.get('grms_full_reported_g') or 'não informado'} g. Não confundir esse valor global com o Grms em uma banda comum recortada.")
             st.dataframe(breakpoint_table(r['frequency_Hz'],r['psd_g2_per_Hz']),hide_index=True,height=230)
 
 
@@ -179,7 +179,7 @@ def show_builtin_profile(catalog):
 def main():
     st.set_page_config(page_title='Veiga | Curva PSD e breakpoints',page_icon='📈',layout='wide')
     st.title('Curva PSD e breakpoints de ensaio')
-    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.1')
+    st.caption('Medição de transporte → seleção por intensidade → curva proposta → comparação com referências · v6.2')
     catalog=load_catalog()
     with st.sidebar:
         st.header('Comparar novo teste')
@@ -236,7 +236,12 @@ def main():
     with st.sidebar:
         st.header('Curva de ensaio')
         low=st.number_input('Frequência mínima (Hz)',min_value=.01,value=1.,step=.5,key='recipe_low')
-        high=st.number_input('Frequência máxima (Hz)',min_value=.02,value=50.,step=5.,key='recipe_high')
+        cap=min(200.,float(recording.fs)/2)
+        if st.session_state.get('_band_revision')!='1_200_20261025':
+            st.session_state.pop('recipe_high',None)
+            st.session_state['_band_revision']='1_200_20261025'
+        if st.session_state.get('recipe_high',cap)>cap: st.session_state['recipe_high']=cap
+        high=st.number_input('Frequência máxima (Hz)',min_value=.02,max_value=cap,value=cap,step=5.,key='recipe_high')
         selection_mode=st.selectbox('Trechos usados no perfil',['Alta intensidade','Todos os blocos','Complemento de menor intensidade'],key='selection_mode')
         percent=st.number_input('Tempo de alta intensidade (%)',min_value=.1,max_value=100.,value=10.,step=1.,key='high_percentage')
         with st.expander('Processamento e simplificação'):
@@ -245,7 +250,7 @@ def main():
             overlap=st.selectbox('Sobreposição Welch (%)',[50,0,75],key='overlap')/100
             window=st.selectbox('Janela espectral',['hann','hamming'],key='welch_window')
             tolerance=st.number_input('Erro espectral admitido (dB)',min_value=.05,max_value=10.,value=1.,step=.25,key='recipe_tolerance')
-            max_points=st.number_input('Máximo de breakpoints automáticos',min_value=2,max_value=500,value=80,step=5,key='recipe_points')
+            max_points=st.number_input('Máximo de breakpoints automáticos',min_value=2,max_value=500,value=160,step=5,key='recipe_points')
         with st.expander('Recortar a medição'):
             st.caption('Posição nominal acumulada por amostras, em segundos; não é o relógio da viagem. Segmentos continuam separados.')
             crop=st.checkbox('Aplicar recorte nominal',key='crop_enabled')
