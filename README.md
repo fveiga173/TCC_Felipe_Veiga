@@ -64,7 +64,7 @@ não corrige mudanças de orientação ou calibração.
 
 ## Referências disponíveis
 
-19 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
+26 perfis em `data/psd_catalog.json`, com origem, edição, tabela/figura,
 contexto, seleção e limitações:
 
 | Família | Perfis | Banda original |
@@ -154,3 +154,6 @@ A tabela inclui a linha **Este teste — PSD dos blocos selecionados** do arquiv
 
 ## Versão 6: perfil autoral padrão
 A abertura exibe TCC Veiga 2026 - Serra Gaucha, exatamente pelos breakpoints fornecidos pelo autor. O perfil é a primeira referência do catálogo e acompanha o programa. Uploads de novos BIN/TXT ou CSV usam o fluxo de análise e já podem comparar com o TCC. O perfil congelado é reconstruído da tabela; os BIN/TXT pessoais não são redistribuídos. Fonte, seleção e limitações ficam visíveis.
+
+## Perfis históricos da Figura 5 de Rouillard (2021)
+Sete digitalizações manuais (56 pontos) adicionais, com edição e limites visíveis preservados. Os vértices em pixels, CSV e script estão em data/rouillard_2021. Não são tabelas originais das normas nem substituem suas edições. Grms calculado somente na banda visível; não extrapolar os extremos cortados pela figura. A linha azul D4169-16 média já existente recebeu a nota de associações da legenda. ISO permaneceu com sua fonte anterior.
