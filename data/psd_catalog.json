@@ -210,7 +210,8 @@
       "grms_full_recalculated_g": 0.5418029717458269,
       "min_frequency_Hz": 1.0,
       "max_frequency_Hz": 200.0,
-      "point_count": 12
+      "point_count": 12,
+      "figure5_aliases_note": "A Figura 5 de Rouillard et al. (2021) agrupa esta linha com ISTA 4AB (2009), 2C/3H Steel Spring (2011) e 3B/E/F (2017). Associação segundo legenda da revisão, não confirmação independente das edições."
     },
     {
       "id": "d4169_2016_high",
@@ -2538,6 +2539,545 @@
       "grms_full_reported_g": 0.388,
       "grms_full_calculated_g": 0.3844690153631633,
       "limitations": "Pontos aproximados extraídos de imagem JPEG; proximidade de Grms não valida cada ordenada. Perfil proposto, não PSD bruta de um único veículo."
+    },
+    {
+      "id": "astm_d4728_1987_rouillard_digitized",
+      "name": "ASTM D4728 Truck 1987 — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.1922152694269097,
+        3.990113244336743,
+        16.565777451915473,
+        39.901132443367416,
+        79.703580683056,
+        199.7526781882222
+      ],
+      "psd_g2_per_Hz": [
+        7.90427848111506e-05,
+        0.01,
+        0.01,
+        0.0010054843073148262,
+        0.0010054843073148262,
+        9.999999999999999e-06
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.5205737059043014,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            203,
+            663
+          ],
+          [
+            416,
+            368
+          ],
+          [
+            667,
+            368
+          ],
+          [
+            822,
+            508
+          ],
+          [
+            944,
+            508
+          ],
+          [
+            1106,
+            789
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "astm_d4728_2001_level2_ista3k_2011_rouillard_digitized",
+      "name": "ASTM D4728 nível 2 (2001) / ISTA 3K Rough Surface (2011) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        3.990113244336743,
+        16.565777451915473,
+        39.901132443367416,
+        79.703580683056,
+        199.7526781882222
+      ],
+      "psd_g2_per_Hz": [
+        5.0753171145267954e-05,
+        0.01,
+        0.01,
+        0.0010054843073148262,
+        0.0010054843073148262,
+        9.999999999999999e-06
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.5208817319362328,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            172,
+            690
+          ],
+          [
+            416,
+            368
+          ],
+          [
+            667,
+            368
+          ],
+          [
+            822,
+            508
+          ],
+          [
+            944,
+            508
+          ],
+          [
+            1106,
+            789
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "ista3a_road_2005_rouillard_digitized",
+      "name": "ISTA 3A Over-the-Road Trailer (2005) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        3.022007699489072,
+        5.0346634336289595,
+        7.03542990396456,
+        11.98995999308059,
+        15.043188637608484,
+        24.086483450104367,
+        28.231822591369486,
+        31.089292395188437,
+        41.99066082400996,
+        76.60135522472531,
+        174.33288221999874
+      ],
+      "psd_g2_per_Hz": [
+        0.0007008187307964649,
+        0.019919911789603253,
+        0.019919911789603253,
+        0.0010054843073148262,
+        0.0010054843073148262,
+        0.003989790746741935,
+        0.003989790746741935,
+        0.0010054843073148262,
+        0.0010054843073148262,
+        0.0030186306420638895,
+        0.0030186306420638895,
+        9.999999999999999e-06
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.5382896397080619,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            172,
+            530
+          ],
+          [
+            367,
+            326
+          ],
+          [
+            457,
+            326
+          ],
+          [
+            516,
+            508
+          ],
+          [
+            610,
+            508
+          ],
+          [
+            650,
+            424
+          ],
+          [
+            733,
+            424
+          ],
+          [
+            761,
+            508
+          ],
+          [
+            778,
+            508
+          ],
+          [
+            831,
+            441
+          ],
+          [
+            937,
+            441
+          ],
+          [
+            1082,
+            789
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "ista3a_pickup_2005_rouillard_digitized",
+      "name": "ISTA 3A Pick-up and Delivery Vehicle (2005) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        3.022007699489072,
+        3.990113244336743,
+        7.03542990396456,
+        12.980771126189353,
+        15.043188637608484,
+        24.086483450104367,
+        29.209037170322485,
+        50.06190700771102,
+        70.35429903964562,
+        100.0,
+        199.7526781882222
+      ],
+      "psd_g2_per_Hz": [
+        0.0010054843073148262,
+        0.03423275132071128,
+        0.03423275132071128,
+        0.0002985790847391527,
+        0.0002985790847391527,
+        0.0010054843073148262,
+        0.0010054843073148262,
+        0.00010109986922563758,
+        0.00010109986922563758,
+        0.001970320233070277,
+        0.001970320233070277,
+        5.1592797085352634e-05
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.455997187679561,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            172,
+            508
+          ],
+          [
+            367,
+            293
+          ],
+          [
+            416,
+            293
+          ],
+          [
+            516,
+            582
+          ],
+          [
+            624,
+            582
+          ],
+          [
+            650,
+            508
+          ],
+          [
+            733,
+            508
+          ],
+          [
+            767,
+            648
+          ],
+          [
+            862,
+            648
+          ],
+          [
+            922,
+            467
+          ],
+          [
+            984,
+            467
+          ],
+          [
+            1106,
+            689
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "ista2ab_2011_rouillard_digitized",
+      "name": "ISTA 2A/B (2011) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        3.990113244336743,
+        100.0,
+        199.7526781882222
+      ],
+      "psd_g2_per_Hz": [
+        0.00010109986922563758,
+        0.01,
+        0.01,
+        0.0010054843073148262
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 1.1462020866784628,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            172,
+            648
+          ],
+          [
+            416,
+            368
+          ],
+          [
+            984,
+            368
+          ],
+          [
+            1106,
+            508
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "ista2c_level1_2011_rouillard_digitized",
+      "name": "ISTA 2C Level 1 (2011) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.997526781882221,
+        3.990113244336743,
+        5.0346634336289595,
+        7.03542990396456,
+        11.012144998634444,
+        50.06190700771102,
+        100.0
+      ],
+      "psd_g2_per_Hz": [
+        0.00035763843067788536,
+        0.03537476689309041,
+        0.03537476689309041,
+        0.0015918430202787564,
+        0.013217220719703713,
+        0.00031364405107269324,
+        0.00031364405107269324
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.45050374790078357,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            294,
+            571
+          ],
+          [
+            416,
+            291
+          ],
+          [
+            457,
+            291
+          ],
+          [
+            516,
+            480
+          ],
+          [
+            595,
+            351
+          ],
+          [
+            862,
+            579
+          ],
+          [
+            984,
+            579
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
+    },
+    {
+      "id": "ista3hk_air_2011_rouillard_digitized",
+      "name": "ISTA 3H/K Air Ride (2011) — histórico / digitalizado de Rouillard",
+      "kind": "historical_digitized_test_profile",
+      "source": {
+        "title": "The Case for Reviewing Laboratory-based Road Transport Simulations for Packaging Optimisation",
+        "author": "Rouillard et al.",
+        "year": 2021,
+        "url": "https://doi.org/10.1002/pts.2563"
+      },
+      "locator": "Figura 5, p.10 impressa (página 11 do PDF fornecido)",
+      "context": "Perfil histórico de ensaio reproduzido na revisão; datas são as da legenda. Não é uma medição de campo nova nem confirmação da edição vigente.",
+      "method": "Digitalização manual dos vértices visíveis em pixels; calibração log-log. Frequência: x=172 em 1 Hz, x=578 em 10 Hz, x=984 em 100 Hz; PSD: y=368 em 0.01 e y=789 em 1e-5 g²/Hz. Sem normalização de amplitude.",
+      "interpolation": "power_law_log_log",
+      "frequency_Hz": [
+        1.0,
+        1.997526781882221,
+        3.022007699489072,
+        5.0346634336289595,
+        10.0,
+        15.043188637608484,
+        30.220076994890718,
+        50.06190700771102,
+        100.0
+      ],
+      "psd_g2_per_Hz": [
+        0.000911213095320704,
+        0.00891494698436702,
+        0.007085268203439983,
+        0.00035763843067788536,
+        0.00035763843067788536,
+        0.0017855888801920684,
+        0.0005479202352511191,
+        0.0010736898803591982,
+        0.0001795381598348978
+      ],
+      "grms_full_reported_g": null,
+      "grms_full_calculated_g": 0.27558948104046443,
+      "limitations": "Aproximação gráfica; espessura de traço, sobreposição e arredondamento de pixels limitam precisão. Nenhuma extrapolação além do trecho visível: inícios e finais podem refletir recorte da figura, sobretudo na borda inferior. Grms calculado apenas na banda digitalizada; não atribuir ao protocolo completo.",
+      "digitization": {
+        "pixel_vertices": [
+          [
+            172,
+            514
+          ],
+          [
+            294,
+            375
+          ],
+          [
+            367,
+            389
+          ],
+          [
+            457,
+            571
+          ],
+          [
+            578,
+            571
+          ],
+          [
+            650,
+            473
+          ],
+          [
+            773,
+            545
+          ],
+          [
+            862,
+            504
+          ],
+          [
+            984,
+            613
+          ]
+        ],
+        "image_width": 1210,
+        "image_height": 917,
+        "scaling_applied": false
+      }
     }
   ]
 }
