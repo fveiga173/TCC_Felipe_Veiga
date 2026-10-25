@@ -143,8 +143,13 @@ def show_builtin_profile(catalog):
     comparison,band=compare_profiles(selected,profile,refs)
     comparison.loc[comparison.reference_id=='this_test_selected','reference']=baseline['name']+' — reconstruído'
     comparison.loc[comparison.reference_id=='this_test_selected','kind']='builtin_reconstructed'
-    st.caption(f'Comparação na banda comum {band[0]:g}–{band[1]:g} Hz, sem normalização das amplitudes.')
-    st.dataframe(comparison[['reference','reference_grms_common_g','proposed_to_reference_grms','shape_distance_db']].rename(columns={'reference':'Referência','reference_grms_common_g':'Grms na banda comum (g)','proposed_to_reference_grms':'TCC / referência','shape_distance_db':'Distância de forma (dB)'}),hide_index=True)
+    comparison.loc[comparison.reference_id=='this_test_selected','reference_grms_full_g']=grms
+    st.caption('Grms completo de cada perfil, na banda indicada ao lado. Bandas diferentes representam conteúdos de frequência diferentes; estes valores não são uma comparação em banda igual.')
+    st.dataframe(comparison[['reference','native_band_Hz','reference_grms_full_g']].rename(columns={'reference':'Referência','native_band_Hz':'Banda do perfil (Hz)','reference_grms_full_g':'Grms do perfil completo (g)'}),hide_index=True,column_config={'Grms do perfil completo (g)':st.column_config.NumberColumn(format='%.5f')})
+    with st.expander('Comparação espectral na mesma banda'):
+        st.caption(f'Métricas calculadas em {band[0]:g}–{band[1]:g} Hz, sem normalização. Este recorte não altera o Grms completo mostrado acima.')
+        st.dataframe(comparison[['reference','reference_grms_common_g','proposed_to_reference_grms','shape_distance_db']].rename(columns={'reference':'Referência','reference_grms_common_g':'Grms na banda comum (g)','proposed_to_reference_grms':'TCC / referência na banda comum','shape_distance_db':'Distância de forma (dB)'}),hide_index=True)
+    download_csv('Baixar comparação dos perfis',comparison,'comparacao_perfis.csv',key='download_builtin_comparison')
     with st.expander('Tabela de breakpoints do perfil incorporado'):
         st.dataframe(profile,hide_index=True)
     download_csv('Baixar perfil incorporado (CSV)',profile,'TCC_Veiga_2026_Serra_Gaucha.csv',key='download_builtin_profile')
@@ -275,11 +280,14 @@ def main():
         if common:
             st.info(f'Comparação numérica na mesma banda para todas as curvas: {common[0]:g}–{common[1]:g} Hz. Grms globais publicados aparecem nos detalhes das fontes.')
             if common!=[low,high]: st.caption('A faixa foi reduzida à interseção das referências escolhidas; não foram inventados valores fora da cobertura.')
-            labels={'reference':'Referência','reference_grms_common_g':'Grms referência (g)','selected_grms_common_g':'Grms medido selecionado (g)',
-                    'proposed_grms_common_g':'Grms proposto (g)','proposed_to_reference_grms':'Proposto / referência','shape_distance_db':'Distância de forma (dB)'}
-            st.dataframe(comparison[list(labels)].rename(columns=labels),hide_index=True)
-            st.caption('Distância de forma: RMS do erro em dB após retirar o nível médio, em 512 frequências logarítmicas. Compara forma; a razão de Grms compara intensidade. As curvas não são normalizadas.')
-            download_csv('Baixar comparação na banda comum',comparison,'comparacao_referencias.csv',key='download_comparison')
+            labels={'reference':'Referência','native_band_Hz':'Banda do perfil (Hz)','reference_grms_full_g':'Grms do perfil completo (g)',
+                    'selected_grms_full_g':'Grms medido completo (g)','proposed_grms_full_g':'Grms proposto completo (g)'}
+            st.dataframe(comparison[list(labels)].rename(columns=labels),hide_index=True,column_config={'Grms do perfil completo (g)':st.column_config.NumberColumn(format='%.5f')})
+            st.caption('Valores completos na banda de cada perfil; bandas distintas não são equivalentes. As métricas abaixo usam somente a banda comum.')
+            with st.expander('Comparação espectral na mesma banda'):
+                st.dataframe(comparison[['reference','reference_grms_common_g','proposed_grms_common_g','proposed_to_reference_grms','shape_distance_db']],hide_index=True)
+                st.caption('Distância de forma: RMS do erro em dB após retirar o nível médio, em 512 frequências logarítmicas. A razão de Grms também usa a banda comum, sem normalização das curvas.')
+            download_csv('Baixar comparação dos perfis',comparison,'comparacao_referencias.csv',key='download_comparison')
         elif not chosen: st.info('Escolha referências para comparar os perfis na banda comum.')
         st.caption('Os perfis da Figura 5 de Rouillard são digitalizações históricas limitadas ao trecho visível, não tabelas normativas originais. Perfis históricos mantêm a edição identificada. Hungria e Rissi são perfis digitalizados, não tabelas numéricas originais. Rissi é uma aproximação digitalizada da Figura 21, com seleção por gatilho/max-overwrite; não é tabela numérica original nem média contínua da viagem.')
         st.caption('Este teste representa a PSD dos blocos selecionados do arquivo carregado; a curva proposta é sua aproximação por breakpoints.')
