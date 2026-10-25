@@ -10,7 +10,7 @@ embalagens. O foco é a mesa de vibração aleatória controlada por PSD.
 ## Usar
 
 1. Envie BIN e TXT correspondentes, ou CSV com `time_s` e um eixo de aceleração.
-2. Confira contexto, banda e processamento. O início é **1–50 Hz**.
+2. Confira contexto, banda e processamento. O início é **1–200 Hz**, limitado a 200 Hz ou Nyquist, se menor.
 3. O perfil principal começa pelos **10% mais intensos** do tempo coberto pelos
    blocos. O percentual é ajustável; é possível usar todos os blocos ou seu
    complemento de menor intensidade.
@@ -52,7 +52,7 @@ consideração própria.
 - Breakpoints: interpolação por leis de potência em log-log e integral analítica.
 - A aproximação automática conserva a área e adiciona pontos por desvio espectral
   na grade de avaliação. Pontos podem estar entre bins, sem criar informação
-  espectral adicional. O critério inicial é 1 dB, com até 80 pontos.
+  espectral adicional. O critério inicial é 1 dB, com até 160 pontos.
 - Se o limite de pontos não atende ao erro escolhido, o aplicativo informa a
   falha. Esse é um critério numérico do estudo, não tolerância da mesa.
 - Edições manuais têm seu próprio erro e Grms, sem reescala silenciosa.
@@ -157,3 +157,6 @@ A abertura exibe TCC Veiga 2026 - Serra Gaucha, exatamente pelos breakpoints for
 
 ## Perfis históricos da Figura 5 de Rouillard (2021)
 Sete digitalizações manuais (56 pontos) adicionais, com edição e limites visíveis preservados. Os vértices em pixels, CSV e script estão em data/rouillard_2021. Não são tabelas originais das normas nem substituem suas edições. Grms calculado somente na banda visível; não extrapolar os extremos cortados pela figura. A linha azul D4169-16 média já existente recebeu a nota de associações da legenda. ISO permaneceu com sua fonte anterior.
+
+## Revisão 6.2 — banda 1–200 Hz
+O perfil incorporado foi reprocessado a partir do TEST014 original, incluindo limpeza exploratória e seleção dos 10% refeitas na banda de 1–200 Hz. Grms 0,299838544 g; 96 breakpoints; 10970 s retidos e 1100 s selecionados. O limite padrão e máximo da análise é 200 Hz (ou Nyquist se menor). O perfil anterior de 1–50 Hz permanece em data/history, fora do catálogo ativo. O script tools/reprocess_200hz.py permite reproduzir com os arquivos brutos locais, que não são publicados. A banda de cálculo não constitui validação metrológica do sensor.
