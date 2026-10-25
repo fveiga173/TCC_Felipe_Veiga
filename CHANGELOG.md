@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 6.3.0 — 25/10/2026
+
+- Treze PSDs verticais de Rissi: dez regiões metropolitanas e três rotas longas.
+- Catálogo com 39 perfis; composto anterior preservado sem duplicação.
+- CSVs em 1–200 Hz e banda ampla até 375 Hz, calibração e conferência reproduzível.
+- Divergências globais maiores que 5% sinalizadas; sem normalização de níveis.
+
 ## 6.2.0 — 25/10/2026
 
 - Reprocessamento do TEST014 original em 1–200 Hz, com limpeza e seleção de intensidade revistas.
