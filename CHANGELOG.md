@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 6.2.0 — 25/10/2026
+
+- Reprocessamento do TEST014 original em 1–200 Hz, com limpeza e seleção de intensidade revistas.
+- Perfil incorporado: 0,29984 Grms, 96 breakpoints, erro máximo 0,95435 dB.
+- Análise padrão e limite máximo de 200 Hz; perfil anterior preservado em histórico.
+
+
 ## 6.1.0 — 25/10/2026
 
 - Sete perfis históricos digitalizados da Figura 5 de Rouillard et al. (2021), com 56 pontos e rastreabilidade por pixels.
