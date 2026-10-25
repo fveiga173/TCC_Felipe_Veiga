@@ -124,7 +124,7 @@ def show_builtin_profile(catalog):
     st.caption('Perfil autoral incorporado. Curva reconstruída da tabela exportada; não é uma nova análise do BIN. Para comparar uma nova medição, envie seu BIN + TXT ou CSV na lateral.')
     by_id={r['id']:r for r in catalog[1:]}
     ids=st.multiselect('Referências para comparar com o perfil incorporado',list(by_id),
-        default=['korea_2024_last_mile','rissi2008_vertical_digitized','hungary_borocz_singh_2018_digitized'],
+        default=list(by_id),
         format_func=lambda k:by_id[k]['name'],key='builtin_references')
     refs=[by_id[k] for k in ids]
     fig=go.Figure()
@@ -266,7 +266,7 @@ def main():
     with tabs[1]:
         st.subheader('Curva proposta e perfis publicados')
         by_id={r['id']:r for r in catalog}
-        ids=st.multiselect('Curvas de referência',list(by_id),default=['tcc_veiga_2026_serra_gaucha','d4169_2016_medium','korea_2020_leaf_spring_high','rissi2008_vertical_digitized'],
+        ids=st.multiselect('Curvas de referência',list(by_id),default=list(by_id),
                            format_func=lambda k:by_id[k]['name'],key='reference_ids')
         chosen=[by_id[k] for k in ids]
         try: comparison,common=compare_profiles(selected,profile,chosen)
